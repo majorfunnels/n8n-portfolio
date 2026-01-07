@@ -144,8 +144,8 @@ chmod +x .git/hooks/pre-commit
 
 ## 📬 Contact
 
-- **LinkedIn:** [Your LinkedIn URL]
-- **Email:** [Your Email]
+- **LinkedIn:** https://www.linkedin.com/in/jcmarx/
+- **Email:** majorfunnels@gmail.com
 
 ## 📄 License
 
