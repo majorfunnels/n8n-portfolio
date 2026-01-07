@@ -1,0 +1,138 @@
+# =============================================================================
+# n8n Workflow Repository .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# RAW/UNSANITIZED WORKFLOWS (CRITICAL - NEVER COMMIT)
+# -----------------------------------------------------------------------------
+/workflows/raw/
+raw/
+**/raw/
+*.raw.json
+*-raw.json
+*_raw.json
+
+# Backup files that might contain credentials
+*.backup.json
+*.bak.json
+*.bak
+
+# -----------------------------------------------------------------------------
+# CREDENTIALS & SECRETS
+# -----------------------------------------------------------------------------
+.env
+.env.*
+*.env
+credentials.json
+secrets.json
+*-credentials.json
+*-secrets.json
+config.local.json
+.n8n/
+
+# API Keys (if accidentally saved as files)
+*.key
+*.pem
+*.crt
+*.secret
+
+# -----------------------------------------------------------------------------
+# SANITIZATION ARTIFACTS
+# -----------------------------------------------------------------------------
+# Reports may contain partial credential info
+*-report.json
+sanitization-report*.json
+/workflows/sanitization-report.json
+
+# ID mapping files (contain original <-> redacted mappings)
+.id_map.json
+id_mapping*.json
+
+# -----------------------------------------------------------------------------
+# EXECUTION DATA & LOGS
+# -----------------------------------------------------------------------------
+# n8n execution exports
+executions/
+execution-*.json
+
+# Pinned data exports
+pinned-data/
+*.pindata.json
+
+# Logs
+*.log
+logs/
+
+# -----------------------------------------------------------------------------
+# TEST DATA
+# -----------------------------------------------------------------------------
+# Fixture data that might contain real examples
+fixtures/real/
+test-data/real/
+*.fixture.json
+*.testdata.json
+
+# -----------------------------------------------------------------------------
+# EDITOR & SYSTEM FILES
+# -----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*.swn
+
+# -----------------------------------------------------------------------------
+# PYTHON (for sanitization scripts)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+.venv/
+
+# -----------------------------------------------------------------------------
+# NODE (if using any JS tooling)
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# -----------------------------------------------------------------------------
+# MISC
+# -----------------------------------------------------------------------------
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Archives (might contain unsanitized exports)
+*.zip
+*.tar.gz
+*.7z
+
+# Notes that might contain sensitive info
+NOTES.md
+TODO.md
+personal-notes/
