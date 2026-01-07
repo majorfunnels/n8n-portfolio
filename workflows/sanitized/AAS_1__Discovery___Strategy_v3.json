@@ -1,0 +1,2219 @@
+{
+  "name": "AAS 1: Discovery & Strategy v3",
+  "nodes": [
+    {
+      "parameters": {
+        "fieldToSplitOut": "all_queries",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -4256,
+        -80
+      ],
+      "id": "81d0d11f-08a4-456d-8665-27f203425dd9",
+      "name": "Split Out â€” Searches"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "={{ $json.api_params.part }}"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.api_params.q }}"
+            },
+            {
+              "name": "type",
+              "value": "={{ $json.api_params.type }}"
+            },
+            {
+              "name": "maxResults",
+              "value": "={{ $json.api_params.maxResults }}"
+            },
+            {
+              "name": "relevanceLanguage",
+              "value": "={{ $json.api_params.relevanceLanguage }}"
+            },
+            {
+              "name": "regionCode",
+              "value": "={{ $json.api_params.regionCode }}"
+            },
+            {
+              "name": "order",
+              "value": "={{ $json.api_params.order }}"
+            },
+            {
+              "name": "videoDuration",
+              "value": "={{ $json.api_params.videoDuration }}"
+            },
+            {
+              "name": "publishedAfter",
+              "value": "={{ $json.api_params.publishedAfter }}"
+            },
+            {
+              "name": "safeSearch",
+              "value": "={{ $json.api_params.safeSearch }}"
+            },
+            {
+              "name": "videoEmbeddable",
+              "value": "={{ $json.api_params.videoEmbeddable }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3808,
+        -80
+      ],
+      "id": "5f8a1e8a-8ab3-4893-8098-b9e30f7dae73",
+      "name": "API â€” YouTube Search",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Query Auth YouTube Data API v3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Stamp Query Metadata onto Search Response â€” v7.0 FIXED\n// \n// Uses $runIndex to match items (HTTP Request breaks paired item chain)\n// ================================================================\n\n// Get all search configs to match by index\nlet allConfigs = [];\ntry {\n  allConfigs = $('Code â€” Build Axis-Specific Search Config').all();\n} catch (e) {\n  // Fallback: try to get from input\n  allConfigs = [];\n}\n\n// Get run index to find the matching config\nlet runIndex = 0;\ntry {\n  runIndex = $runIndex;\n} catch (e) {\n  try {\n    runIndex = $itemIndex;\n  } catch (e2) {\n    runIndex = 0;\n  }\n}\n\n// Get the matching search config\nconst searchInput = allConfigs[runIndex]?.json || {};\n\nconst label = searchInput.label || \"\";\nconst intent = searchInput.axis || \"\";\nconst q = searchInput.q || \"\";\nconst q_full = searchInput.q_full || \"\";\nconst duration_tier = searchInput.duration_tier || \"\";\nconst searchConfig = searchInput._searchConfig || {};\n\n// Get items from current input (YouTube response, possibly already tagged)\nconst responseItems = $json.items || [];\n\nconst stamped = responseItems.map(v => ({\n  ...v,\n  query: { label, intent, q, q_full, duration_tier },\n  // Ensure these are also at top level\n  search_label: v.search_label || label,\n  search_intent: v.search_intent || intent,\n  search_q: v.search_q || q,\n  search_q_full: v.search_q_full || q_full,\n  duration_tier: v.duration_tier || duration_tier,\n  _searchConfig: v._searchConfig || searchConfig\n}));\n\nreturn [{ json: { items: stamped } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3360,
+        -80
+      ],
+      "id": "dcf60f97-84cf-4d69-99fb-ebe774279cc2",
+      "name": "Code â€” Stamp Query Metadata"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -3136,
+        -80
+      ],
+      "id": "f8010cfa-5b99-4d8a-820b-a863e4b23a64",
+      "name": "Split Out â€” Search Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -2912,
+        -80
+      ],
+      "id": "7e2cdab1-8235-4b31-ba48-dbc6ac4df23d",
+      "name": "Merge â€” Search Results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Batch IDs (Dedup) â€” v7.0\n// \n// Extracts VIDEO IDs (not channel IDs) and creates batches\n// Outputs batch_video_ids for API â€” Get Video Stats\n// ================================================================\n\nconst rawInputs = $input.all();\n\nconst debugInfo = {\n  inputCount: rawInputs.length,\n  timestamp: new Date().toISOString()\n};\n\n// ================================================================\n// EXTRACT VIDEOS FROM ALL INPUTS\n// ================================================================\nlet allVideos = [];\n\nfor (const input of rawInputs) {\n  const json = input.json || {};\n  \n  // Structure: { items: [...] } from Merge node\n  if (Array.isArray(json.items)) {\n    allVideos.push(...json.items);\n  }\n  // Structure: Direct video object\n  else if (json.id?.videoId || json.snippet) {\n    allVideos.push(json);\n  }\n}\n\ndebugInfo.videosExtracted = allVideos.length;\n\n// ================================================================\n// DEDUPLICATE BY VIDEO ID\n// ================================================================\nconst seen = new Map();\nconst deduped = [];\nconst searchMetadataMap = {};\n\nfor (const video of allVideos) {\n  // Extract VIDEO ID (not channel ID!)\n  let videoId = null;\n  \n  if (video.id?.videoId) {\n    // Standard YouTube Search API structure\n    videoId = video.id.videoId;\n  } else if (typeof video.id === 'string') {\n    videoId = video.id;\n  } else if (video.videoId) {\n    videoId = video.videoId;\n  }\n  \n  if (!videoId || seen.has(videoId)) {\n    if (!videoId) debugInfo.skippedNoId = (debugInfo.skippedNoId || 0) + 1;\n    continue;\n  }\n  \n  seen.set(videoId, true);\n  deduped.push({ ...video, _extractedVideoId: videoId });\n  \n  // Preserve search metadata\n  searchMetadataMap[videoId] = {\n    search_label: video.search_label || video._searchLabel || '',\n    search_intent: video.search_intent || video._searchAxis || '',\n    search_q: video.search_q || '',\n    search_q_full: video.search_q_full || video._searchQuery || '',\n    duration_tier: video.duration_tier || video._duration_tier || '',\n    search_config: video._searchConfig || {}\n  };\n}\n\ndebugInfo.afterDedup = deduped.length;\ndebugInfo.duplicatesRemoved = allVideos.length - deduped.length;\n\n// ================================================================\n// MULTI-BATCH OUTPUT\n// ================================================================\nconst MAX_TOTAL_VIDEOS = 250;\nconst BATCH_SIZE = 50;\n\nconst capped = deduped.slice(0, MAX_TOTAL_VIDEOS);\n\nif (capped.length === 0) {\n  return [{\n    json: {\n      batch_index: 0,\n      batch_video_ids: '',\n      video_count: 0,\n      search_metadata_map: {},\n      _error: 'No videos extracted',\n      _debug: debugInfo\n    }\n  }];\n}\n\nconst batches = [];\nconst totalBatches = Math.ceil(capped.length / BATCH_SIZE);\n\nfor (let i = 0; i < capped.length; i += BATCH_SIZE) {\n  const batchVideos = capped.slice(i, i + BATCH_SIZE);\n  const batchIndex = Math.floor(i / BATCH_SIZE);\n  \n  // Extract VIDEO IDs for this batch\n  const batchIds = batchVideos\n    .map(v => v._extractedVideoId)\n    .filter(id => id && typeof id === 'string')\n    .join(',');\n  \n  batches.push({\n    json: {\n      batch_index: batchIndex,\n      batch_video_ids: batchIds,  // <-- THIS IS THE KEY FIELD\n      video_count: batchVideos.length,\n      search_metadata_map: searchMetadataMap,\n      \n      _batchMeta: {\n        batch_number: batchIndex + 1,\n        total_batches: totalBatches,\n        videos_in_batch: batchVideos.length,\n        is_last_batch: batchIndex === totalBatches - 1,\n        sample_ids: batchIds.split(',').slice(0, 3)\n      },\n      \n      _pipelineStats: {\n        raw_input: allVideos.length,\n        after_dedup: deduped.length,\n        total_processing: capped.length\n      },\n      \n      _debug: debugInfo\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2688,
+        -80
+      ],
+      "id": "dc4d69a8-c6f3-4b2f-8ba2-2c9e720c8e24",
+      "name": "Code â€” Batch IDs (Dedup)"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/videos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet,statistics,contentDetails"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.batch_video_ids }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2240,
+        -32
+      ],
+      "id": "a35563c7-f59a-461e-81a0-41bd3a6ed475",
+      "name": "API â€” Get Video Stats",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Query Auth YouTube Data API v3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Extract Channel IDs (Dedup) â€” v7.0\n// \n// Extracts unique channel IDs from merged video stats\n// Works with new multi-batch structure from Code â€” Merge Batch Results\n// ================================================================\n\nconst input = $input.first().json;\n\n// Handle both old structure (direct items) and new structure (nested)\nlet items = [];\n\nif (Array.isArray(input.items)) {\n  items = input.items;\n} else if (Array.isArray(input)) {\n  items = input;\n} else {\n  // Try to find items in the input\n  const allInputs = $input.all();\n  for (const inp of allInputs) {\n    if (Array.isArray(inp.json?.items)) {\n      items.push(...inp.json.items);\n    } else if (inp.json?.snippet?.channelId) {\n      items.push(inp.json);\n    }\n  }\n}\n\n// Extract unique channel IDs\nconst channelIds = new Set();\n\nfor (const item of items) {\n  const channelId = item.snippet?.channelId || item.channelId || item.channel_id;\n  if (channelId && typeof channelId === 'string') {\n    channelIds.add(channelId);\n  }\n}\n\nconst uniqueIds = Array.from(channelIds);\n\n// Return empty-safe output\nif (uniqueIds.length === 0) {\n  return [{\n    json: {\n      channel_ids: '',\n      _warning: 'No channel IDs found',\n      _inputItemCount: items.length,\n      _inputStructure: Object.keys(input || {})\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    channel_ids: uniqueIds.join(','),\n    _stats: {\n      unique_channels: uniqueIds.length,\n      videos_processed: items.length\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2016,
+        -384
+      ],
+      "id": "35b55a0b-2b7c-4d73-afb1-914b710bf59e",
+      "name": "Code â€” Extract Channel IDs"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/channels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "statistics"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.channel_ids }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1792,
+        -384
+      ],
+      "id": "68b9eadb-4079-492e-b20c-c155b656d61e",
+      "name": "API â€” Get Channel Stats",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Query Auth YouTube Data API v3"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -1568,
+        -240
+      ],
+      "id": "3a898e26-8bd6-49e4-a569-120d8d5c9afd",
+      "name": "Merge â€” Videos + Channels"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Attach Channel Stats â€” v7.0 Multi-Batch Compatible\n// \n// Enriches videos with channel statistics\n// Preserves all search metadata including duration_tier\n// ================================================================\n\nconst inputs = $input.all().map(i => i.json);\n\n// Find the videos response (has contentDetails)\nconst videosJson = inputs.find(j =>\n  Array.isArray(j.items) && j.items[0]?.snippet?.channelId && j.items[0]?.contentDetails\n);\n\n// Find the channels response (has subscriberCount)\nconst channelsJson = inputs.find(j =>\n  Array.isArray(j.items) && j.items[0]?.id && j.items[0]?.statistics?.subscriberCount !== undefined\n);\n\nif (!videosJson) {\n  return [{ json: { error: \"Missing videos.list response\", inputs_received: inputs.length } }];\n}\n\n// ================================================================\n// GET SEARCH METADATA FROM MULTIPLE POSSIBLE SOURCES\n// ================================================================\nlet searchMetadataMap = {};\n\n// Try batch-related nodes\nconst possibleSources = [\n  'Code â€” Batch IDs (Dedup)',\n  'Code â€” Merge Batch Results'\n];\n\nfor (const nodeName of possibleSources) {\n  try {\n    const nodeItems = $(nodeName).all();\n    for (const item of nodeItems) {\n      if (item.json?.search_metadata_map) {\n        searchMetadataMap = { ...searchMetadataMap, ...item.json.search_metadata_map };\n      }\n    }\n  } catch (e) { }\n}\n\n// Also check current inputs for metadata\nfor (const input of inputs) {\n  if (input.search_metadata_map) {\n    searchMetadataMap = { ...searchMetadataMap, ...input.search_metadata_map };\n  }\n}\n\n// ================================================================\n// BUILD CHANNEL STATS MAP\n// ================================================================\nconst channelMap = new Map();\nif (channelsJson) {\n  for (const ch of channelsJson.items) {\n    channelMap.set(ch.id, {\n      subscriberCount: Number(ch.statistics?.subscriberCount || 0),\n      viewCount: Number(ch.statistics?.viewCount || 0),\n      videoCount: Number(ch.statistics?.videoCount || 0),\n    });\n  }\n}\n\n// ================================================================\n// ENRICH VIDEOS\n// ================================================================\nconst enriched = videosJson.items.map(v => {\n  const cid = v.snippet?.channelId;\n  const stats = channelMap.get(cid) || { subscriberCount: 0, viewCount: 0, videoCount: 0 };\n  const searchMeta = searchMetadataMap[v.id] || {};\n\n  return {\n    ...v,\n    channelStatistics: stats,\n    \n    // Search metadata\n    search_label: searchMeta.search_label || \"\",\n    search_intent: searchMeta.search_intent || \"\",\n    search_q: searchMeta.search_q || \"\",\n    search_q_full: searchMeta.search_q_full || \"\",\n    duration_tier: searchMeta.duration_tier || \"\",\n    _searchConfig: searchMeta.search_config || {}\n  };\n});\n\nreturn [{ \n  json: { \n    items: enriched,\n    _enrichmentStats: {\n      videos_enriched: enriched.length,\n      channels_found: channelMap.size,\n      metadata_keys: Object.keys(searchMetadataMap).length\n    }\n  } \n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1344,
+        -240
+      ],
+      "id": "46094d21-b5f0-4271-b4dc-6d647b2e84c8",
+      "name": "Code â€” Attach Channel Stats"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        -240
+      ],
+      "id": "82644370-5a59-4482-ac28-d4199f1050e2",
+      "name": "Split Out â€” Stats Items"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -672,
+        -240
+      ],
+      "id": "4cb04e22-a05a-4308-9375-84053a42de65",
+      "name": "Loop Over â€” Winners"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/channels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "statistics,snippet"
+            },
+            {
+              "name": "id",
+              "value": "={{ $('Set â€” Current Video Context').item.json.channel_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        -432
+      ],
+      "id": "4d89b7c9-4202-48e2-b7c4-9a1628444df9",
+      "name": "API â€” Get Channel Details",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Query Auth YouTube Data API v3"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/commentThreads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "part",
+              "value": "snippet"
+            },
+            {
+              "name": "videoId",
+              "value": "={{ $('Set â€” Current Video Context').item.json.video_id }}"
+            },
+            {
+              "name": "order",
+              "value": "relevance"
+            },
+            {
+              "name": "maxResults",
+              "value": "30"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        -432
+      ],
+      "id": "622f3d66-24c0-427f-bd76-423294310048",
+      "name": "API â€” Get Comments",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Query Auth YouTube Data API v3"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTEDEB2C08",
+          "mode": "list",
+          "cachedResultName": "Videos",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDEA5B54"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Duration": "={{ $json.video_duration }}",
+            "Views": "={{ $json.video_views }}",
+            "Likes": "={{ $json.video_likes }}",
+            "Comments Count": "={{ $json.video_comments_count }}",
+            "Video ID": "={{ $json.video_id }}",
+            "Video URL": "={{ $json.video_url }}",
+            "Video Title": "={{ $json.video_title }}",
+            "Description": "={{ $json.video_description }}",
+            "Publish Date": "={{ $json.video_publish_date || undefined }}",
+            "Thumbnail URL": "={{ $json.video_thumbnail_url }}",
+            "Top Comments (raw)": "={{ $json.video_top_comments }}",
+            "Video Tags": "={{ $json.video_tags }}"
+          },
+          "matchingColumns": [
+            "Video ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Video ID",
+              "displayName": "Video ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Video URL",
+              "displayName": "Video URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Video Title",
+              "displayName": "Video Title",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Publish Date",
+              "displayName": "Publish Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Duration",
+              "displayName": "Duration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Thumbnail URL",
+              "displayName": "Thumbnail URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Views",
+              "displayName": "Views",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Likes",
+              "displayName": "Likes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Comments Count",
+              "displayName": "Comments Count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Top Comments (raw)",
+              "displayName": "Top Comments (raw)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Video Tags",
+              "displayName": "Video Tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1472,
+        -432
+      ],
+      "id": "75c82def-ff32-439e-9507-05dcabb98589",
+      "name": "Airtable â€” Upsert Videos",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED077EC4",
+          "mode": "list",
+          "cachedResultName": "Channels",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTED27C277"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Channel Video Count": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_video_count }}",
+            "Channel Total Views": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_total_views }}",
+            "Channel ID": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_id }}",
+            "Channel Title": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_title }}",
+            "Channel URL": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_url }}",
+            "Country": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_country }}",
+            "Subs": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_subs }}",
+            "Channel Handle": "={{ $('Code â€” Clean & Parse Profiler').item.json.channel_handle }}"
+          },
+          "matchingColumns": [
+            "Channel ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Channel ID",
+              "displayName": "Channel ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Channel Title",
+              "displayName": "Channel Title",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Channel URL",
+              "displayName": "Channel URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Subs",
+              "displayName": "Subs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Channel Total Views",
+              "displayName": "Channel Total Views",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Channel Video Count",
+              "displayName": "Channel Video Count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Channel Handle",
+              "displayName": "Channel Handle",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1696,
+        -432
+      ],
+      "id": "c15df275-bc66-4e70-afe8-8c8c8926ef79",
+      "name": "Airtable â€” Upsert Channels",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED9CCD8A",
+          "mode": "list",
+          "cachedResultName": "Searches",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDAB99DF"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Search Query Full (q_full)": "={{ $('Code â€” Clean & Parse Profiler').item.json.search_q_full }}",
+            "Search Label": "={{ $('Code â€” Clean & Parse Profiler').item.json.search_label }}",
+            "Search Intent": "={{ $('Code â€” Clean & Parse Profiler').item.json.search_intent }}"
+          },
+          "matchingColumns": [
+            "Search Query Full (q_full)"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Search Query Full (q_full)",
+              "displayName": "Search Query Full (q_full)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Search Label",
+              "displayName": "Search Label",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Search Intent",
+              "displayName": "Search Intent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "PAIN",
+                  "value": "PAIN"
+                },
+                {
+                  "name": "PROTOCOL",
+                  "value": "PROTOCOL"
+                },
+                {
+                  "name": "BUYER",
+                  "value": "BUYER"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1920,
+        -432
+      ],
+      "id": "133b1daf-342e-41d1-8244-e426c859cdba",
+      "name": "Airtable â€” Upsert Searches",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED848B65",
+          "mode": "list",
+          "cachedResultName": "Runs",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDCE0926"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "={{ $('Code â€” Clean & Parse Profiler').item.json.run_id }}",
+            "Macro Category / Niche": "={{ $('Code â€” Clean & Parse Profiler').item.json.niche }}",
+            "day_key": "={{ $('Code â€” Clean & Parse Profiler').item.json.day_key }}",
+            "rotation_index": "={{ $('Code â€” Clean & Parse Profiler').item.json.rotation_index }}",
+            "Run Timestamp": "={{ $('Code â€” Clean & Parse Profiler').item.json.run_timestamp }}"
+          },
+          "matchingColumns": [
+            "Run ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Run ID",
+              "displayName": "Run ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Macro Category / Niche",
+              "displayName": "Macro Category / Niche",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "day_key",
+              "displayName": "day_key",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rotation_index",
+              "displayName": "rotation_index",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Run Timestamp",
+              "displayName": "Run Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2144,
+        -432
+      ],
+      "id": "e36f6ef6-8d2c-4ed9-86fd-aa1014bb0abb",
+      "name": "Airtable â€” Upsert Runs",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED82385D",
+          "mode": "list",
+          "cachedResultName": "Traffic Leaks",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDA446C2"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Leak ID": "={{ $json.leak_id }}",
+            "Niche": "={{ $json.niche }}",
+            "Video": "={{ [$json.video_record_id] }}",
+            "Channel": "={{ [$json.channel_record_id] }}",
+            "Searches": "={{ [$json.search_record_id] }}",
+            "Run": "={{ [$json.run_record_id] }}",
+            "Protocol Fit Score": "={{ $json.protocol_fit_score }}",
+            "Kinetic Leak Score": "={{ $json.kinetic_leak_score }}",
+            "Status": "STRATEGY_COMPLETE",
+            "Feature â€” AI": "={{ $json.feature_ai }}",
+            "Feature â€” V": "={{ $json.feature_v }}",
+            "Feature â€” ER": "={{ $json.feature_er }}",
+            "Feature â€” DS": "={{ $json.feature_ds }}",
+            "Feature â€” CI": "={{ $json.feature_ci }}",
+            "The Who": "={{ $json.the_who }}",
+            "The Pain": "={{ $json.the_pain }}",
+            "The Hook": "={{ $json.the_hook }}",
+            "Protocol Name": "={{ $json.protocol_name }}",
+            "Lead Magnet Idea": "={{ $json.lead_magnet_idea }}",
+            "Days Old": "={{ $json.days_old }}",
+            "Phase 1 â€” Hardware (Foundation)": "={{ $json.phase_1_hardware }}",
+            "Phase 2 â€” Software (Optimization)": "={{ $json.phase_2_software }}",
+            "Phase 3 â€” Maintenance (Insurance)": "={{ $json.phase_3_maintenance }}",
+            "Tags Triggered": "={{ $json.tags_triggered }}",
+            "Brand Outlet": "={{ $('Config â€” Category Carousel').item.json.brand_outlet }}"
+          },
+          "matchingColumns": [
+            "Leak ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Leak ID",
+              "displayName": "Leak ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Niche",
+              "displayName": "Niche",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Brand Outlet",
+              "displayName": "Brand Outlet",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Video",
+              "displayName": "Video",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Channel",
+              "displayName": "Channel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Searches",
+              "displayName": "Searches",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Run",
+              "displayName": "Run",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Protocol Fit Score",
+              "displayName": "Protocol Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Kinetic Leak Score",
+              "displayName": "Kinetic Leak Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Days Old",
+              "displayName": "Days Old",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Tags Triggered",
+              "displayName": "Tags Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Feature â€” AI",
+              "displayName": "Feature â€” AI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Feature â€” V",
+              "displayName": "Feature â€” V",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Feature â€” ER",
+              "displayName": "Feature â€” ER",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Feature â€” DS",
+              "displayName": "Feature â€” DS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Feature â€” CI",
+              "displayName": "Feature â€” CI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "The Who",
+              "displayName": "The Who",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "The Pain",
+              "displayName": "The Pain",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "The Hook",
+              "displayName": "The Hook",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Protocol Name",
+              "displayName": "Protocol Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Lead Magnet Idea",
+              "displayName": "Lead Magnet Idea",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phase 1 â€” Hardware (Foundation)",
+              "displayName": "Phase 1 â€” Hardware (Foundation)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phase 2 â€” Software (Optimization)",
+              "displayName": "Phase 2 â€” Software (Optimization)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phase 3 â€” Maintenance (Insurance)",
+              "displayName": "Phase 3 â€” Maintenance (Insurance)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "STRATEGY_COMPLETE",
+                  "value": "STRATEGY_COMPLETE"
+                },
+                {
+                  "name": "COPY_COMPLETE",
+                  "value": "COPY_COMPLETE"
+                },
+                {
+                  "name": "SOCIAL_COMPLETE",
+                  "value": "SOCIAL_COMPLETE"
+                },
+                {
+                  "name": "IMAGES_COMPLETE",
+                  "value": "IMAGES_COMPLETE"
+                },
+                {
+                  "name": "VIDEO_COMPLETE",
+                  "value": "VIDEO_COMPLETE"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created At",
+              "displayName": "Created At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Last Modified",
+              "displayName": "Last Modified",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Copy Generated",
+              "displayName": "Copy Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Images Generated",
+              "displayName": "Images Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2592,
+        -352
+      ],
+      "id": "998e2e72-87fe-46dc-806c-4f8efb979c9c",
+      "name": "Airtable â€” Upsert Traffic Leaks",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        976,
+        -208
+      ],
+      "id": "f2790c2b-981d-4838-a8c8-a87707ac7efe",
+      "name": "GPT 4o (Strategist)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Set â€” Current Video Context â€” v7.0\n// \n// Prepares video data for Stage 2 processing\n// Preserves duration_tier and searchConfig\n// ================================================================\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [];\n}\n\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  let video_id = data.id || data.video_id || \"\";\n  let channel_id = data.snippet?.channelId || data.channel_id || \"\";\n  \n  results.push({\n    json: {\n      // IDs\n      video_id: video_id,\n      channel_id: channel_id,\n      id: data.id,\n      \n      // YouTube data\n      snippet: data.snippet || {},\n      statistics: data.statistics || {},\n      contentDetails: data.contentDetails || {},\n      channelStatistics: data.channelStatistics || {},\n      \n      // Algorithm scores from Stage 1\n      features: data.features || {},\n      stats: data.stats || {},\n      _raw: data._raw || {},\n      \n      // Search metadata (for debugging)\n      search_label: data.search_label || \"Unknown\",\n      search_intent: data.search_intent || \"PROTOCOL\",\n      search_q: data.search_q || \"\",\n      search_q_full: data.search_q_full || \"\",\n      duration_tier: data.duration_tier || \"UNKNOWN\",\n      _searchConfig: data._searchConfig || {}\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        -432
+      ],
+      "id": "6d08402d-8c79-4dfe-9f9d-a3ff8f13856d",
+      "name": "Set â€” Current Video Context"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Quality Gate v4.0 (PF Removed)\n// \n// CHANGES FROM v3.0:\n// - REMOVED: All PF (Problem Framing) references\n// - UPDATED: Confidence factors â€” no more STRONG_PROBLEM_FRAMING\n// - UPDATED: Quality metrics output â€” PF removed\n// \n// Gate logic unchanged:\n// 1. Check leak_score minimum (0.45)\n// 2. Check AI minimum (1.0)  \n// 3. Type-aware DS check (only for true PAIN videos)\n// ================================================================\n\nconst MIN_LEAK_SCORE = 0.45;  // Universal minimum\nconst MIN_AI = 1.0;           // Must have authority imbalance\n\n// Type-specific DS thresholds (based on EFFECTIVE type, not search axis)\nconst DS_THRESHOLDS = {\n  PAIN: 0.10,      // Lowered from 0.15 â€” new DS calc is more sensitive\n  BUYER: 0.00,     // BUYER videos â€” DS doesn't matter much\n  PROTOCOL: 0.00,  // PROTOCOL videos â€” DS irrelevant\n  UNKNOWN: 0.00    // Default â€” don't gate on DS\n};\n\nconst videoData = $input.first().json;\nconst stats = videoData.stats || {};\nconst features = videoData.features || {};\nconst typeDetection = videoData._typeDetection || {};\nconst scoringInfo = videoData._scoringInfo || {};\nconst dsAnalysis = videoData._dsAnalysis || {};\n\nconst leakScore = stats.leak_score || 0;\nconst AI = features.AI || 0;\nconst DS = features.DS || 0;\nconst ER = features.ER || 0;\nconst CI = features.CI || 0;\n\n// Use EFFECTIVE type (from content detection), not just search axis\nconst searchAxis = typeDetection.searchAxis || videoData.search_intent || \"PROTOCOL\";\nconst effectiveType = typeDetection.effectiveType || scoringInfo.effectiveType || searchAxis;\nconst typeSource = typeDetection.typeSource || \"SEARCH_AXIS\";\n\n// Get appropriate DS threshold based on EFFECTIVE type\nconst dsThreshold = DS_THRESHOLDS[effectiveType] ?? 0.0;\n\n// Positive ratio from comment analysis\nconst positiveRatio = dsAnalysis.positiveRatio || 0;\n\n// Build metadata\nconst gateMetadata = {\n  video_id: videoData.id,\n  video_title: videoData.snippet?.title || \"Unknown\",\n  leak_score: +leakScore.toFixed(4),\n  AI: +AI.toFixed(3),\n  DS: +DS.toFixed(3),\n  ER: +ER.toFixed(5),\n  CI: +CI.toFixed(3),\n  stage1_score: stats.stage1_score || 0,\n  search_axis: searchAxis,\n  effective_type: effectiveType,\n  type_source: typeSource,\n  positive_ratio: +positiveRatio.toFixed(2),\n  ds_threshold_used: dsThreshold\n};\n\n// ================================================================\n// GATE 1: Primary leak_score threshold\n// ================================================================\nif (leakScore < MIN_LEAK_SCORE) {\n  return [{\n    json: {\n      _gateResult: \"REJECTED\",\n      _gateReason: `leak_score ${leakScore.toFixed(4)} < ${MIN_LEAK_SCORE} threshold`,\n      _gateCode: \"LOW_LEAK_SCORE\",\n      ...gateMetadata\n    }\n  }];\n}\n\n// ================================================================\n// GATE 2: Authority Imbalance minimum\n// ================================================================\nif (AI < MIN_AI) {\n  return [{\n    json: {\n      _gateResult: \"REJECTED\",\n      _gateReason: `AI ${AI.toFixed(3)} < ${MIN_AI} (weak leak signal)`,\n      _gateCode: \"LOW_AI\",\n      ...gateMetadata\n    }\n  }];\n}\n\n// ================================================================\n// GATE 3: Type-Aware DS Check\n// Only apply DS threshold to videos that are ACTUALLY pain-type\n// NOT to solution videos found via pain search\n// ================================================================\nif (effectiveType === \"PAIN\" && DS < dsThreshold && leakScore < 0.55) {\n  return [{\n    json: {\n      _gateResult: \"REJECTED\",\n      _gateReason: `PAIN-type video: DS ${DS.toFixed(3)} < ${dsThreshold} AND leak_score < 0.55`,\n      _gateCode: \"LOW_DS_PAIN_TYPE\",\n      ...gateMetadata\n    }\n  }];\n}\n\n// ================================================================\n// PASSED â€” Assign quality tier and confidence factors\n// ================================================================\nlet tier = \"GOOD\";\nif (leakScore >= 0.70) tier = \"EXCELLENT\";\nelse if (leakScore >= 0.60) tier = \"STRONG\";\n\n// Build confidence factors (v4.0 â€” PF removed)\nconst confidenceFactors = [];\n\n// Traffic leak confirmation (core signal)\nif (AI >= 2.0) confidenceFactors.push(\"EXCEPTIONAL_LEAK\");\nelse if (AI >= 1.5) confidenceFactors.push(\"CONFIRMED_LEAK\");\nelse if (AI >= 1.2) confidenceFactors.push(\"STRONG_LEAK\");\n\n// Audience signals from comments\nif (DS >= 0.25) confidenceFactors.push(\"DESPERATE_AUDIENCE\");\nelse if (DS >= 0.10) confidenceFactors.push(\"PAIN_SIGNALS_PRESENT\");\n\nif (positiveRatio >= 0.35) confidenceFactors.push(\"SATISFIED_AUDIENCE\");\nelse if (positiveRatio >= 0.20) confidenceFactors.push(\"POSITIVE_SENTIMENT\");\n\n// Engagement\nif (ER >= 0.05) confidenceFactors.push(\"HIGH_ENGAGEMENT\");\nelse if (ER >= 0.03) confidenceFactors.push(\"GOOD_ENGAGEMENT\");\n\n// Commercial intent\nif (CI >= 0.30) confidenceFactors.push(\"BUYING_INTENT\");\nelse if (CI >= 0.15) confidenceFactors.push(\"COMPARISON_SHOPPING\");\n\n// Special: PAIN search found PROTOCOL video (JACKPOT!)\nif (searchAxis === \"PAIN\" && effectiveType === \"PROTOCOL\") {\n  confidenceFactors.push(\"PAIN_SEARCH_FOUND_SOLUTION\");\n}\n\n// ================================================================\n// OUTPUT â€” Pass through all video data with gate results\n// ================================================================\nreturn [{\n  json: {\n    ...videoData,\n    _gateResult: \"PASSED\",\n    _gateTier: tier,\n    _gateConfidence: confidenceFactors.join(\", \") || \"STANDARD\",\n    _gateSearchAxis: searchAxis,\n    _gateEffectiveType: effectiveType,\n    _gateTypeSource: typeSource,\n    _qualityMetrics: {\n      leak_score: +leakScore.toFixed(4),\n      AI: +AI.toFixed(3),\n      DS: +DS.toFixed(3),\n      ER: +ER.toFixed(5),\n      CI: +CI.toFixed(3),\n      positive_ratio: +positiveRatio.toFixed(2),\n      tier: tier,\n      effective_type: effectiveType\n      // PF intentionally removed\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -432
+      ],
+      "id": "51778b42-e32f-49a7-87cc-f214c2f3b934",
+      "name": "Code â€” Quality Gate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ce316636-c804-4288-becb-86abc75e311d",
+              "leftValue": "={{ $json._gateResult }}",
+              "rightValue": "PASSED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        -432
+      ],
+      "id": "1ac9a0aa-e399-46a4-8934-4e81ee12d829",
+      "name": "If â€” PASSED"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            },
+            {
+              "triggerAtHour": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -5280,
+        -80
+      ],
+      "id": "d0fc4ff6-9e31-47f2-97d5-048381934ac1",
+      "name": "Trigger â€” 2x Daily Traffic Leak Patrol"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Tag Results with Axis â€” v7.0\n// \n// Tags each YouTube result with its source query metadata\n// Including axis, duration_tier, and full searchConfig for debugging\n//\n// INPUT: YouTube Search API response\n// OUTPUT: Tagged items wrapped for merge\n// ================================================================\n\n// Find the query context from upstream nodes\nlet allQueries = [];\nconst possibleNodeNames = [\n  'Code â€” Build Axis-Specific Search Config',\n  'Split Out â€” Searches'\n];\n\nfor (const nodeName of possibleNodeNames) {\n  try {\n    allQueries = $(nodeName).all();\n    if (allQueries.length > 0) break;\n  } catch (e) { }\n}\n\nif (allQueries.length === 0) {\n  return [{\n    json: {\n      items: [],\n      _error: \"Could not find query source node. Check node names.\"\n    }\n  }];\n}\n\n// Get run index to match query to response\nlet runIndex;\ntry {\n  runIndex = $runIndex;\n} catch (e) {\n  try {\n    runIndex = $itemIndex;\n  } catch (e2) {\n    runIndex = 0;\n  }\n}\n\n// Get the query context for THIS specific search\nconst queryContext = allQueries[runIndex]?.json || {};\n\n// Get YouTube response\nconst youtubeResponse = $input.first().json;\nconst items = youtubeResponse.items || [];\n\n// Handle empty results gracefully\nif (items.length === 0) {\n  return [{\n    json: {\n      items: [],\n      _query: queryContext.q_full || \"\",\n      _axis: queryContext.axis || \"\",\n      _duration_tier: queryContext.duration_tier || \"\",\n      _searchConfig: queryContext._searchConfig || {},\n      _note: \"No YouTube results for this query\"\n    }\n  }];\n}\n\n// Tag each video with its source query metadata\nconst taggedItems = items.map(video => ({\n  ...video,\n  \n  // === Primary Search Metadata ===\n  _searchAxis: queryContext.axis || \"UNKNOWN\",\n  _searchLabel: queryContext.label || \"\",\n  _searchQuery: queryContext.q_full || \"\",\n  _duration_tier: queryContext.duration_tier || \"UNKNOWN\",\n  _searchConfig: queryContext._searchConfig || {},\n  \n  // === Fields for downstream nodes ===\n  search_label: queryContext.label || \"\",\n  search_intent: queryContext.axis || \"\",\n  search_q: queryContext.q || \"\",\n  search_q_full: queryContext.q_full || \"\",\n  duration_tier: queryContext.duration_tier || \"\",\n  \n  // === Run tracking ===\n  _runId: queryContext.run_id || \"\",\n  _runIndex: runIndex\n}));\n\n// Return wrapped in items array for the Merge node\nreturn [{\n  json: {\n    items: taggedItems,\n    _queryUsed: queryContext.q_full,\n    _axisUsed: queryContext.axis,\n    _durationTier: queryContext.duration_tier,\n    _searchConfig: queryContext._searchConfig,\n    _resultCount: taggedItems.length,\n    _runIndex: runIndex\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        -80
+      ],
+      "id": "12af459d-aaa8-4aa3-b827-8b7f55567d69",
+      "name": "Code â€” Tag Results with Axis"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -4768,
+        144
+      ],
+      "id": "f65c272d-8f8c-4e19-859d-4ea081f053c8",
+      "name": "GPT 4o (Query Architect)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Build Axis-Specific Search Config â€” OPPORTUNITY AXIS v9.0\n// \n// Updated for new Opportunity Axis framework:\n// - FRUSTRATION: Recent content, relevance-sorted (active problems)\n// - TRANSITION: Wider time window (life events are evergreen)\n// - DECISION_POINT: Very recent, viewCount-sorted (active buyers)\n// ================================================================\n\nconst allInputs = $input.all();\nconst outputs = [];\n\nconst now = new Date();\nconst threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);\nconst sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);\nconst oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);\nconst twoYearsAgo = new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000);\n\nconst axisConfigs = {\n  FRUSTRATION: {\n    order: 'relevance',\n    publishedAfter: oneYearAgo.toISOString(),\n    _rationale: 'Relevance surfaces genuine frustration; 1yr catches ongoing problems'\n  },\n  TRANSITION: {\n    order: 'relevance',\n    publishedAfter: twoYearsAgo.toISOString(),\n    _rationale: 'Life transitions are evergreen; wider window captures more'\n  },\n  DECISION_POINT: {\n    order: 'viewCount',\n    publishedAfter: sixMonthsAgo.toISOString(),\n    _rationale: 'ViewCount surfaces popular comparisons; recent = relevant products'\n  },\n  // Fallback for any legacy axis names\n  PAIN: {\n    order: 'relevance',\n    publishedAfter: oneYearAgo.toISOString(),\n    _rationale: 'Legacy PAIN axis â€” mapped to FRUSTRATION behavior'\n  },\n  PROTOCOL: {\n    order: 'viewCount',\n    publishedAfter: oneYearAgo.toISOString(),\n    _rationale: 'Legacy PROTOCOL axis â€” mapped to TRANSITION behavior'\n  },\n  BUYER: {\n    order: 'viewCount',\n    publishedAfter: sixMonthsAgo.toISOString(),\n    _rationale: 'Legacy BUYER axis â€” mapped to DECISION_POINT behavior'\n  }\n};\n\nfor (const input of allInputs) {\n  const query = input.json;\n  const axis = (query.axis || 'FRUSTRATION').toUpperCase();\n  const config = axisConfigs[axis] || axisConfigs.FRUSTRATION;\n\n  const commonParams = {\n    part: 'snippet',\n    q: query.q_full,\n    type: 'video',\n    maxResults: '50',\n    relevanceLanguage: 'en',\n    regionCode: 'US',\n    order: config.order,\n    publishedAfter: config.publishedAfter,\n    safeSearch: 'moderate',\n    videoEmbeddable: 'true'\n  };\n\n  // MEDIUM duration (4-20 min)\n  outputs.push({\n    json: {\n      ...query,\n      duration_tier: 'MEDIUM',\n      api_params: { ...commonParams, videoDuration: 'medium' },\n      _searchConfig: {\n        axis: axis,\n        duration_tier: 'MEDIUM',\n        duration_range: '4-20 min',\n        rationale: config._rationale,\n        order: config.order,\n        publishedAfter: config.publishedAfter.split('T')[0]\n      }\n    }\n  });\n\n  // LONG duration (20+ min)\n  outputs.push({\n    json: {\n      ...query,\n      duration_tier: 'LONG',\n      api_params: { ...commonParams, videoDuration: 'long' },\n      _searchConfig: {\n        axis: axis,\n        duration_tier: 'LONG',\n        duration_range: '20+ min',\n        rationale: config._rationale,\n        order: config.order,\n        publishedAfter: config.publishedAfter.split('T')[0]\n      }\n    }\n  });\n}\n\nreturn outputs;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4032,
+        -80
+      ],
+      "id": "cdfaa9c6-f85d-4d37-a21d-1cfbf5532687",
+      "name": "Code â€” Build Axis-Specific Search Config"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -2464,
+        -80
+      ],
+      "id": "c4ab2005-773c-4a96-84e5-f584f011ec46",
+      "name": "Split In Batches â€” Video Stats"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Merge Batch Results â€” v7.0\n// \n// Combines video stats from multiple batched API calls\n// into a single array for downstream processing\n// ================================================================\n\nconst allInputs = $input.all();\nconst mergedItems = [];\nlet combinedSearchMetadata = {};\n\nfor (const input of allInputs) {\n  const json = input.json;\n  \n  // Collect items from videos.list responses\n  if (Array.isArray(json.items)) {\n    mergedItems.push(...json.items);\n  }\n  \n  // Merge search metadata maps from all batches\n  if (json.search_metadata_map) {\n    combinedSearchMetadata = { ...combinedSearchMetadata, ...json.search_metadata_map };\n  }\n}\n\nreturn [{\n  json: {\n    items: mergedItems,\n    search_metadata_map: combinedSearchMetadata,\n    _mergeStats: {\n      total_batches_processed: allInputs.length,\n      total_videos_merged: mergedItems.length,\n      metadata_keys_preserved: Object.keys(combinedSearchMetadata).length\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2240,
+        -240
+      ],
+      "id": "1df8b695-cd9c-4534-b01b-63eef40be489",
+      "name": "Code â€” Merge Batch Results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Build Master Context (v9.0)\n// \n// CANONICAL OUTPUT for all downstream AAS workflows.\n// Combines parsed data with Airtable record IDs.\n// Updated for new Profiler output structure.\n// ================================================================\n\nconst parsed = $('Code â€” Clean & Parse Profiler').item.json;\nconst carousel = $('Config â€” Category Carousel').first().json;\nconst videoRec = $('Airtable â€” Upsert Videos').item.json;\nconst channelRec = $('Airtable â€” Upsert Channels').item.json;\nconst searchRec = $('Airtable â€” Upsert Searches').item.json;\nconst runRec = $('Airtable â€” Upsert Runs').item.json;\nconst leakRec = $('Airtable â€” Upsert Traffic Leaks').item.json;\n\nreturn [{\n  json: {\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // AIRTABLE RECORD IDs (for linking)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    traffic_leak_record_id: leakRec.id,\n    video_record_id: videoRec.id,\n    channel_record_id: channelRec.id,\n    search_record_id: searchRec.id,\n    run_record_id: runRec.id,\n    copy_record_id: null,\n    images_record_id: null,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // PRIMARY KEYS (for upsert matching)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    leak_id: parsed.leak_id,\n    video_id: parsed.video_id,\n    channel_id: parsed.channel_id,\n    search_q_full: parsed.search_q_full,\n    run_id: parsed.run_id,\n    copy_id: `${parsed.video_id}-COPY`,\n    image_id: `${parsed.video_id}-IMAGES`,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // RUN DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    niche: parsed.niche,\n    brand_outlet: carousel.brand_outlet,\n    brand_outlet_name: carousel.brand_outlet_name,\n    day_key: parsed.day_key,\n    rotation_index: carousel.outlet_index,\n    category_index: carousel.category_index,\n    run_timestamp: parsed.run_timestamp,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // SEARCH DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    search_label: parsed.search_label,\n    search_intent: parsed.search_intent,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // VIDEO DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    video_url: parsed.video_url,\n    video_title: parsed.video_title,\n    video_description: parsed.video_description,\n    video_publish_date: parsed.video_publish_date,\n    video_duration: parsed.video_duration,\n    video_thumbnail_url: parsed.video_thumbnail_url,\n    video_views: parsed.video_views,\n    video_likes: parsed.video_likes,\n    video_comments_count: parsed.video_comments_count,\n    video_top_comments: parsed.video_top_comments,\n    video_tags: parsed.video_tags,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // CHANNEL DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    channel_title: parsed.channel_title,\n    channel_url: parsed.channel_url,\n    channel_country: parsed.channel_country,\n    channel_subs: parsed.channel_subs,\n    channel_total_views: parsed.channel_total_views,\n    channel_video_count: parsed.channel_video_count,\n    channel_handle: parsed.channel_handle,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // ALGORITHM SCORES\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    opportunity_score: parsed.opportunity_score,\n    protocol_fit_score: parsed.opportunity_score, // Alias for backward compat\n    kinetic_leak_score: parsed.opportunity_score, // Alias for backward compat\n    days_old: parsed.days_old,\n    tags_triggered: parsed.tags_triggered,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // FEATURE SCORES (v9.0)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    feature_ai: parsed.feature_ai,\n    feature_v: parsed.feature_v,\n    feature_er: parsed.feature_er,\n    feature_ar: parsed.feature_ar,  // NEW\n    feature_ds: parsed.feature_ds,\n    feature_ci: parsed.feature_ci,\n    feature_pf: 0,  // Deprecated\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // PROFILER OUTPUT (v9.0 - NEW STRUCTURE)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    the_who: parsed.the_who,\n    the_wall: parsed.the_wall,\n    the_pain: parsed.the_wall,  // Alias for backward compat\n    the_hook: parsed.the_hook,\n    \n    // Research prompts (NEW)\n    perplexity_prompt_1: parsed.perplexity_prompt_1,\n    perplexity_prompt_2: parsed.perplexity_prompt_2,\n    perplexity_prompt_3: parsed.perplexity_prompt_3,\n    \n    // Lead magnet (NEW)\n    lead_magnet_title: parsed.lead_magnet_title,\n    lead_magnet_hook: parsed.lead_magnet_hook,\n    lead_magnet_format: parsed.lead_magnet_format,\n    lead_magnet_idea: parsed.lead_magnet_title,  // Alias for backward compat\n    \n    // Content angle (NEW)\n    content_angle: parsed.content_angle,\n    \n    // Legacy fields (backward compat)\n    protocol_name: parsed.protocol_name,\n    phase_1_hardware: \"\",\n    phase_2_software: \"\",\n    phase_3_maintenance: \"\",\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // PIPELINE STATUS\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    status: \"STRATEGY_COMPLETE\",\n    _stage: \"STRATEGY_COMPLETE\",\n    _created_at: new Date().toISOString(),\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // CONTENT PLACEHOLDERS (populated by AAS 2)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    blog_post: null,\n    video_script: null,\n    voice_over_text: null,\n    research_source: null,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // SOCIAL PLACEHOLDERS (populated by AAS 3)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    ig_carousel: null,\n    pinterest_pin: null,\n    x_twitter_thread: null,\n    facebook_post: null,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // DRIVE DATA (populated by AAS 4)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    drive_folder_id: null,\n    drive_folder_url: null,\n    visual_theme: null,\n    assets_generated: 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        -432
+      ],
+      "id": "b9a3d019-a3b6-4af6-b551-25fb982e69a9",
+      "name": "Code â€” Build Master Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[PROMPT REDACTED - 3044 chars]",
+        "options": {
+          "systemMessage": "[PROMPT REDACTED - 1148 chars]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        -4832,
+        -80
+      ],
+      "id": "ca05ac72-0567-4442-b4f4-4ac0edccaf35",
+      "name": "Agent â€” Query Architect (Opportunity Axis)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code â€” Parse Opportunity Axis Plan\nconst raw = $input.all()?.[0]?.json?.output ?? \"\";\nconst match = raw.match(/\\{[\\s\\S]*\\}/);\n\nif (!match) {\n  return [{ json: { error: \"No JSON found\", raw } }];\n}\n\ntry {\n  const obj = JSON.parse(match[0]);\n  const searches = Array.isArray(obj.searches) ? obj.searches : [];\n  \n  // Get macro category\n  const macroRaw = $('Config â€” Category Carousel').first().json.target_macro_category || '';\n  const run_id = $('Config â€” Category Carousel').first().json.run_id || '';\n  \n  // Clean macro phrase\n  const STOP = new Set(['and','or','for','to','of','the','a','an','in','on','with']);\n  const macroTerms = macroRaw\n    .replace(/[&\\/]/g, ' ')\n    .replace(/[']/g, \"'\")\n    .replace(/[^\\w\\s'\"]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .split(' ')\n    .filter(s => s && !STOP.has(s.toLowerCase()))\n    .slice(0, 5)\n    .join(' ');\n  \n  // Build full queries with new axis names\n  const allQueries = searches.map((search, idx) => {\n    const qRaw = (search.q || '').trim();\n    const q_full = [macroTerms, qRaw].filter(Boolean).join(' ').trim();\n    \n    // Map new axis names for downstream compatibility\n    const axis = (search.axis || 'FRUSTRATION').toUpperCase();\n    \n    return {\n      axis: axis,\n      label: search.label || `Query_${idx + 1}`,\n      q: qRaw,\n      q_full: q_full,\n      q_loose: q_full.replace(/[\"']/g, ''),\n      macro_terms: macroTerms,\n      run_id: run_id,\n      search_intent: axis\n    };\n  });\n  \n  return [{\n    json: {\n      all_queries: allQueries,\n      macro_terms: macroTerms,\n      run_id: run_id,\n      _counts: {\n        frustration: allQueries.filter(q => q.axis === 'FRUSTRATION').length,\n        transition: allQueries.filter(q => q.axis === 'TRANSITION').length,\n        decision_point: allQueries.filter(q => q.axis === 'DECISION_POINT').length,\n        total: allQueries.length\n      }\n    }\n  }];\n  \n} catch (e) {\n  return [{ json: { error: \"Parse failed: \" + e.message, raw } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4480,
+        -80
+      ],
+      "id": "f43c0087-131c-473c-909b-90ba59b6c4a1",
+      "name": "Code â€” Parse Opportunity Axis Plan"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// OPPORTUNITY HUNTER v9.0 â€” Stage 1\n// \n// PHILOSOPHY: Find undermonetized content with frustrated audiences\n// - AI (Authority Imbalance) = primary signal (views >> subs)\n// - Velocity = momentum signal  \n// - Engagement = audience investment\n// - Language filter = post-API necessity\n// - NO fragile keyword matching\n// \n// Stage 2 handles: comment sentiment, affiliate readiness, commercial intent\n// ================================================================\n\n// ================================================================\n// HARD FILTER THRESHOLDS\n// ================================================================\nconst MIN_DURATION_SECONDS = 180;     // 3 min safety net\nconst MAX_DURATION_SECONDS = 7200;    // 2 hours\nconst MIN_SUBSCRIBER_COUNT = 50;      // Catch small channels\nconst MAX_SUBSCRIBER_COUNT = 750000;  // Exclude mega channels\nconst MIN_VIEW_COUNT = 500;           // Minimum signal\nconst MIN_AUTHORITY_IMBALANCE = 0.5;  // Core filter â€” this is what matters\n\n// Low-value content (these ARE reliable â€” shorts/pranks are never good targets)\nconst LOW_VALUE_PATTERNS = [\n  'shorts', '#shorts', 'tiktok', 'prank', 'funny', 'meme', 'compilation',\n  'reaction', 'asmr', 'mukbang', 'haul', 'unboxing', 'vlog', 'day in my life',\n  'grwm', 'get ready with me'\n];\n\n// ================================================================\n// HELPERS\n// ================================================================\nfunction log10(x) { return Math.log(x) / Math.LN10; }\n\nfunction daysSince(iso) {\n  if (!iso) return 999;\n  const t = new Date(iso).getTime();\n  if (isNaN(t)) return 999;\n  return Math.max(0.1, (Date.now() - t) / (1000 * 60 * 60 * 24));\n}\n\nfunction parseDuration(duration) {\n  if (!duration || typeof duration !== 'string') return 0;\n  const match = duration.match(/PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?/);\n  if (!match) return 0;\n  return (parseInt(match[1] || '0') * 3600) + \n         (parseInt(match[2] || '0') * 60) + \n         parseInt(match[3] || '0');\n}\n\n// ================================================================\n// LANGUAGE DETECTION (Post-API filter)\n// Returns false for non-English content\n// ================================================================\nfunction isLikelyEnglish(title, description, snippet) {\n  const defaultLang = snippet?.defaultLanguage || '';\n  const audioLang = snippet?.defaultAudioLanguage || '';\n  \n  if (defaultLang && !defaultLang.startsWith('en')) return false;\n  if (audioLang && !audioLang.startsWith('en')) return false;\n  \n  const nonLatinPattern = /[\\u0400-\\u04FF\\u0600-\\u06FF\\u0E00-\\u0E7F\\u3040-\\u30FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uAC00-\\uD7AF\\u0590-\\u05FF]/;\n  \n  if (nonLatinPattern.test(title)) {\n    const latinChars = (title.match(/[a-zA-Z]/g) || []).length;\n    const totalChars = title.replace(/\\s/g, '').length;\n    if (latinChars / totalChars < 0.5) return false;\n  }\n  \n  const turkishSpecific = /[ÄŸÄžÄ±Ä°ÅŸÅžÃ§Ã‡Ã¶Ã–Ã¼Ãœ]/g;\n  const turkishMatches = (title.match(turkishSpecific) || []).length;\n  if (turkishMatches >= 3) return false;\n  \n  return true;\n}\n\n// ================================================================\n// PROCESS VIDEOS\n// ================================================================\nconst validVideos = [];\nconst skippedCount = { \n  duration: 0, \n  subs: 0, \n  views: 0, \n  ai: 0, \n  lowValue: 0,\n  language: 0 \n};\n\nfor (const item of items) {\n  const json = item.json;\n  const tags = [];\n  \n  const snippet = json.snippet || {};\n  const views = parseInt(json.statistics?.viewCount || 0);\n  const likes = parseInt(json.statistics?.likeCount || 0);\n  const commentCount = parseInt(json.statistics?.commentCount || 0);\n  const subs = parseInt(json.channelStatistics?.subscriberCount || 0);\n  const publishedAt = snippet.publishedAt || \"\";\n  const title = (snippet.title || \"\");\n  const titleLower = title.toLowerCase();\n  const description = (snippet.description || \"\").toLowerCase();\n  const durationSecs = parseDuration(json.contentDetails?.duration);\n  const daysOld = daysSince(publishedAt);\n  \n  // Core metric\n  const AI = log10(views + 1) - log10(subs + 1);\n  \n  // ================================================================\n  // HARD FILTERS (order matters for efficiency)\n  // ================================================================\n  \n  if (!isLikelyEnglish(title, description, snippet)) {\n    skippedCount.language++;\n    continue;\n  }\n  \n  if (durationSecs < MIN_DURATION_SECONDS || durationSecs > MAX_DURATION_SECONDS) {\n    skippedCount.duration++;\n    continue;\n  }\n  \n  if (subs < MIN_SUBSCRIBER_COUNT || subs > MAX_SUBSCRIBER_COUNT) {\n    skippedCount.subs++;\n    continue;\n  }\n  \n  if (views < MIN_VIEW_COUNT) {\n    skippedCount.views++;\n    continue;\n  }\n  \n  if (AI < MIN_AUTHORITY_IMBALANCE) {\n    skippedCount.ai++;\n    continue;\n  }\n  \n  if (LOW_VALUE_PATTERNS.some(p => titleLower.includes(p))) {\n    skippedCount.lowValue++;\n    continue;\n  }\n  \n  // ================================================================\n  // OPPORTUNITY SCORING\n  // ================================================================\n  \n  // Authority Imbalance tiers â€” renamed for opportunity framing\n  if (AI >= 2.0) tags.push(\"EXCEPTIONAL_OPPORTUNITY\");\n  else if (AI >= 1.5) tags.push(\"STRONG_OPPORTUNITY\");\n  else if (AI >= 1.0) tags.push(\"CONFIRMED_OPPORTUNITY\");\n  else tags.push(\"POTENTIAL_OPPORTUNITY\");\n  \n  // Velocity (views per day)\n  const V = views / (daysOld + 1);\n  if (V >= 5000) tags.push(\"VIRAL_MOMENTUM\");\n  else if (V >= 1000) tags.push(\"HIGH_MOMENTUM\");\n  else if (V >= 300) tags.push(\"MODERATE_MOMENTUM\");\n  else tags.push(\"LOW_MOMENTUM\");\n  \n  // Engagement Rate\n  const ER = views > 0 ? (likes + 2 * commentCount) / views : 0;\n  if (ER >= 0.05) tags.push(\"HIGH_ENGAGEMENT\");\n  else if (ER >= 0.03) tags.push(\"GOOD_ENGAGEMENT\");\n  else if (ER >= 0.015) tags.push(\"MODERATE_ENGAGEMENT\");\n  \n  // Duration tiers\n  let durationBonus = 1.0;\n  if (durationSecs >= 1800) {\n    durationBonus = 1.3;\n    tags.push(\"DEEP_DIVE_30M+\");\n  } else if (durationSecs >= 1200) {\n    durationBonus = 1.2;\n    tags.push(\"DEEP_DIVE_20M+\");\n  } else if (durationSecs >= 600) {\n    durationBonus = 1.1;\n    tags.push(\"SOLID_LENGTH_10M+\");\n  }\n  \n  // Recency bonus\n  let recencyBonus = 1.0;\n  if (daysOld <= 30) {\n    recencyBonus = 1.15;\n    tags.push(\"FRESH_CONTENT\");\n  } else if (daysOld <= 90) {\n    recencyBonus = 1.05;\n    tags.push(\"RECENT_CONTENT\");\n  }\n  \n  // Preserve search axis\n  const searchAxis = json.search_intent || json._searchAxis || \"UNKNOWN\";\n  tags.push(`SEARCH_${searchAxis}`);\n  \n  const durationTier = json.duration_tier || \"UNKNOWN\";\n  tags.push(`DURATION_${durationTier}`);\n  \n  // ================================================================\n  // COMPUTE STAGE 1 SCORE\n  // ================================================================\n  const AI_norm = Math.min(1, Math.max(0, AI / 2.5));\n  const V_norm = Math.min(1, log10(V + 1) / 4);\n  const ER_norm = Math.min(1, ER / 0.08);\n  \n  const stage1_raw = (0.45 * AI_norm) + (0.25 * V_norm) + (0.30 * ER_norm);\n  const stage1_score = stage1_raw * durationBonus * recencyBonus;\n  \n  // ================================================================\n  // STORE RESULTS\n  // ================================================================\n  item.json.features = { \n    AI: +AI.toFixed(3), \n    V: +V.toFixed(1), \n    ER: +ER.toFixed(5)\n  };\n  \n  item.json.stats = {\n    stage1_score: +stage1_score.toFixed(4),\n    daysOld: +daysOld.toFixed(1),\n    durationSecs: durationSecs,\n    durationMin: +(durationSecs / 60).toFixed(1),\n    tags: tags.join(\", \")\n  };\n  \n  item.json._raw = { views, likes, commentCount, subs };\n  item.json.duration_tier = durationTier;\n  item.json._searchConfig = json._searchConfig || {};\n  \n  validVideos.push(item);\n}\n\n// ================================================================\n// SORT AND RETURN TOP CANDIDATES\n// ================================================================\nvalidVideos.sort((a, b) => b.json.stats.stage1_score - a.json.stats.stage1_score);\n\nconst filterStats = {\n  total_input: items.length,\n  passed_filters: validVideos.length,\n  skipped_language: skippedCount.language,\n  skipped_duration: skippedCount.duration,\n  skipped_subs: skippedCount.subs,\n  skipped_views: skippedCount.views,\n  skipped_low_ai: skippedCount.ai,\n  skipped_low_value: skippedCount.lowValue,\n  pass_rate: items.length > 0 \n    ? ((validVideos.length / items.length) * 100).toFixed(1) + '%' \n    : '0%'\n};\n\nif (validVideos.length === 0) {\n  return [{\n    json: {\n      _error: \"No videos passed hard filters\",\n      _filterStats: filterStats\n    }\n  }];\n}\n\nvalidVideos[0].json._filterStats = filterStats;\n\nconst TOP_CANDIDATES = 25;\nreturn validVideos.slice(0, TOP_CANDIDATES);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        -240
+      ],
+      "id": "af6fb1f3-5e34-4269-95a0-c0d4bd85e40f",
+      "name": "Code â€” Opportunity Hunter Stage 1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// OPPORTUNITY HUNTER v9.0 â€” Stage 2 (Comment Analysis)\n// \n// FOCUS: Detect AFFILIATE READINESS in comments\n// \n// Key signals:\n// - AR (Affiliate Readiness) â€” people asking for recommendations\n// - DS (Desperation Score) â€” audience pain level  \n// - CI (Commercial Intent) â€” buying signals\n// - Positive Ratio â€” satisfied audience (indicates solution content)\n// ================================================================\n\nconst videoData = $('Set â€” Current Video Context').item.json;\nconst commentsResponse = $('API â€” Get Comments').first().json;\nconst channelResponse = $('API â€” Get Channel Details').first().json;\n\nconst commentItems = commentsResponse.items || [];\nconst channelItem = channelResponse.items?.[0] || {};\n\nconst searchAxis = (videoData.search_intent || videoData._searchAxis || \"FRUSTRATION\").toUpperCase();\n\n// ================================================================\n// EXTRACT COMMENTS\n// ================================================================\nconst comments = commentItems.map(item => ({\n  text: (item.snippet?.topLevelComment?.snippet?.textOriginal || \n         item.snippet?.topLevelComment?.snippet?.textDisplay || \"\"),\n  likes: item.snippet?.topLevelComment?.snippet?.likeCount || 0,\n  author: item.snippet?.topLevelComment?.snippet?.authorDisplayName || \"\",\n  isCreator: item.snippet?.topLevelComment?.snippet?.authorChannelId?.value === videoData.snippet?.channelId\n})).filter(c => c.text.length > 0 && !c.isCreator);\n\nconst commentTexts = comments.map(c => c.text.toLowerCase());\n\n// ================================================================\n// AFFILIATE READINESS (AR) â€” NEW KEY METRIC\n// \n// Detects comments where people are ASKING for recommendations\n// vs just saying \"thanks\" or \"great video\"\n// \n// AR > 0.2 = HIGH affiliate potential\n// AR > 0.1 = GOOD affiliate potential  \n// AR < 0.05 = LOW affiliate potential (satisfied audience, no asks)\n// ================================================================\nfunction computeAR(comments) {\n  if (comments.length === 0) return { \n    score: 0, signals: [], askingCount: 0, totalAnalyzed: 0,\n    debug: \"No comments\" \n  };\n  \n  // ASKING keywords â€” people seeking recommendations\n  const askingKeywords = [\n    // Direct product asks\n    'what brand', 'which brand', 'what product', 'which product',\n    'what do you use', 'what did you use', 'what are you using',\n    'which one', 'what kind', 'what type', 'what model',\n    'can you recommend', 'do you recommend', 'any recommendations',\n    'can you link', 'drop a link', 'link please', 'link in bio',\n    'where did you get', 'where can i get', 'where to buy',\n    'where do you buy', 'where can i buy', 'how to get',\n    \n    // Comparison/decision asks  \n    'vs', 'versus', 'or should i', 'which is better',\n    'worth it', 'worth the money', 'worth buying',\n    'should i buy', 'should i get', 'thinking about buying',\n    'is it good', 'does it work', 'did it work',\n    \n    // Alternatives/options asks\n    'alternative', 'alternatives', 'other options',\n    'anything else', 'what else', 'similar to',\n    'cheaper option', 'budget option', 'affordable',\n    \n    // Specific resource asks\n    'what app', 'which app', 'what software', 'what program',\n    'what supplement', 'which supplement', 'what dosage',\n    'what book', 'which book', 'what course',\n    'affiliate link', 'discount code', 'coupon'\n  ];\n  \n  // NON-ASKING keywords â€” just appreciation (low affiliate value)\n  const appREDACTED085CB2 = [\n    'thank you so much', 'thanks for sharing', 'really helpful',\n    'great video', 'amazing video', 'love this', 'subscribed',\n    'needed this', 'exactly what i needed', 'perfect timing'\n  ];\n  \n  let askingCount = 0;\n  let appREDACTEDBD9DCF = 0;\n  let signals = [];\n  \n  for (const comment of comments) {\n    const text = comment.text.toLowerCase();\n    let isAsking = false;\n    let isAppreciation = false;\n    \n    for (const keyword of askingKeywords) {\n      if (text.includes(keyword)) {\n        if (!isAsking) {\n          askingCount++;\n          isAsking = true;\n        }\n        const signal = keyword.toUpperCase().replace(/\\s+/g, '_').substring(0, 15);\n        if (!signals.includes(signal) && signals.length < 8) {\n          signals.push(signal);\n        }\n      }\n    }\n    \n    for (const keyword of appREDACTED085CB2) {\n      if (text.includes(keyword) && !isAsking) {\n        if (!isAppreciation) {\n          appREDACTEDBD9DCF++;\n          isAppreciation = true;\n        }\n      }\n    }\n  }\n  \n  const totalAnalyzed = comments.length;\n  const askRatio = askingCount / totalAnalyzed;\n  \n  // Boost score if many asking comments\n  let ar = askRatio;\n  if (askingCount >= 5) ar = Math.min(1, ar + 0.08);\n  else if (askingCount >= 3) ar = Math.min(1, ar + 0.04);\n  \n  return {\n    score: Math.min(1, ar),\n    signals: signals,\n    askingCount: askingCount,\n    appREDACTEDBD9DCF: appREDACTEDBD9DCF,\n    totalAnalyzed: totalAnalyzed,\n    debug: `${totalAnalyzed} comments: ${askingCount} asking, ${appREDACTEDBD9DCF} appreciation`\n  };\n}\n\n// ================================================================\n// DESPERATION SCORE (DS) â€” Unchanged from v8\n// ================================================================\nfunction computeDS(comments) {\n  if (comments.length === 0) return { \n    score: 0, signals: [], positiveRatio: 0, \n    positiveCount: 0, desperateCount: 0, keywordHits: 0,\n    debug: \"No comments\" \n  };\n  \n  const desperationKeywords = [\n    'desperate', 'desperation', 'hopeless', 'helpless', 'miserable',\n    'suffering', 'unbearable', 'excruciating', 'agony', 'torture',\n    'nightmare', 'hell', 'killing me', 'driving me crazy', 'losing my mind',\n    'at my wits end', 'wits end', 'end of my rope',\n    'nothing works', 'nothing worked', 'tried everything', 'nothing helps',\n    'still struggling', 'still suffering', 'getting worse', 'no relief',\n    'cant sleep', \"can't sleep\", 'cant function', \"can't function\",\n    'doesnt work', \"doesn't work\", 'didnt work', \"didn't work\",\n    'for years', 'for months', 'for weeks', 'chronic', 'constant', \n    'persistent', 'every day', 'every night', 'all the time', \n    'non-stop', 'nonstop', 'ongoing',\n    'please help', 'need help', 'any advice', 'any tips', \n    'what should i do', 'does anyone know', 'has anyone', \n    'any suggestions', 'im begging', \"i'm begging\", 'someone help',\n    'ruining my life', 'affecting my', 'destroying my', 'ruined my',\n    'cant work', \"can't work\", 'missed work', 'lost my job',\n    'relationship', 'marriage', 'divorce', 'family'\n  ];\n  \n  const positiveKeywords = [\n    'thank you', 'thanks so much', 'thanks for', 'tysm',\n    'this worked', 'it worked', 'finally worked', 'actually worked',\n    'life saver', 'lifesaver', 'life changer', 'game changer', 'gamechanger',\n    'helped me', 'helped so much', 'really helped', 'this helped',\n    'fixed my', 'cured my', 'solved my', 'relief',\n    'feel better', 'feeling better', 'feel great', 'feeling great',\n    'god bless', 'bless you', 'saved my', 'saved me',\n    'changed my life', 'wish i found', 'wish i knew', 'years ago',\n    'best video', 'amazing video', 'great video', 'excellent',\n    'subscribe', 'subscribed', 'new subscriber'\n  ];\n  \n  let desperateCount = 0;\n  let positiveCount = 0;\n  let signals = [];\n  let totalKeywordHits = 0;\n  \n  for (const comment of comments) {\n    const text = comment.text.toLowerCase();\n    let commentDesperate = false;\n    let commentPositive = false;\n    \n    for (const keyword of desperationKeywords) {\n      if (text.includes(keyword)) {\n        totalKeywordHits++;\n        if (!commentDesperate) {\n          desperateCount++;\n          commentDesperate = true;\n        }\n        const signal = keyword.toUpperCase().replace(/\\s+/g, '_').substring(0, 20);\n        if (!signals.includes(signal) && signals.length < 10) {\n          signals.push(signal);\n        }\n      }\n    }\n    \n    for (const keyword of positiveKeywords) {\n      if (text.includes(keyword)) {\n        if (!commentPositive) {\n          positiveCount++;\n          commentPositive = true;\n        }\n      }\n    }\n  }\n  \n  const totalComments = comments.length;\n  let ds = desperateCount / totalComments;\n  \n  const keywordDensity = totalKeywordHits / Math.max(1, desperateCount);\n  if (keywordDensity > 2.0) ds = Math.min(1, ds + 0.12);\n  else if (keywordDensity > 1.5) ds = Math.min(1, ds + 0.06);\n  \n  if (desperateCount >= 8) ds = Math.min(1, ds + 0.10);\n  else if (desperateCount >= 5) ds = Math.min(1, ds + 0.06);\n  else if (desperateCount >= 3) ds = Math.min(1, ds + 0.03);\n  \n  const positiveRatio = positiveCount / totalComments;\n  \n  return {\n    score: Math.min(1, ds),\n    signals: signals,\n    positiveRatio: positiveRatio,\n    positiveCount: positiveCount,\n    desperateCount: desperateCount,\n    keywordHits: totalKeywordHits,\n    debug: `${totalComments} comments: ${desperateCount} desperate, ${positiveCount} positive (${(positiveRatio * 100).toFixed(0)}%)`\n  };\n}\n\n// ================================================================\n// COMMERCIAL INTENT (CI) â€” Unchanged\n// ================================================================\nfunction computeCI(commentTexts, title, description) {\n  const allText = [...commentTexts, title.toLowerCase(), description.toLowerCase()].join(' ');\n  let score = 0;\n  const signals = [];\n  \n  const patterns = [\n    { pattern: /(?:where\\s+(?:can\\s+i|do\\s+(?:i|you))\\s+(?:buy|get|find|order|purchase))/i, weight: 0.20, signal: \"WHERE_TO_BUY\" },\n    { pattern: /(?:how\\s+much|what(?:'s| is) the price|cost)/i, weight: 0.15, signal: \"PRICE_INQUIRY\" },\n    { pattern: /(?:link\\s+(?:in|below|please)|drop\\s+(?:a\\s+)?link)/i, weight: 0.10, signal: \"LINK_REQUEST\" },\n    { pattern: /(?:what\\s+(?:brand|model|version|type))/i, weight: 0.15, signal: \"BRAND_INQUIRY\" },\n    { pattern: /(?:vs\\.?|versus|compared\\s+to|or\\s+should\\s+i|better\\s+than)/i, weight: 0.15, signal: \"COMPARISON\" },\n    { pattern: /(?:alternative\\s+to|instead\\s+of|similar\\s+to)/i, weight: 0.15, signal: \"ALTERNATIVE_SEEKING\" },\n    { pattern: /(?:which\\s+(?:one|is\\s+better))/i, weight: 0.15, signal: \"WHICH_BETTER\" },\n    { pattern: /(?:amazon|amzn|affiliate)/i, weight: 0.10, signal: \"AMAZON_MENTION\" },\n    { pattern: /(?:recommend|recommendation)/i, weight: 0.12, signal: \"RECOMMENDATION\" },\n    { pattern: /(?:worth\\s+(?:it|the\\s+(?:money|price|cost)))/i, weight: 0.15, signal: \"WORTH_IT\" },\n    { pattern: /(?:should\\s+i\\s+(?:buy|get|try))/i, weight: 0.15, signal: \"SHOULD_BUY\" },\n    { pattern: /(?:discount|coupon|code|deal)/i, weight: 0.10, signal: \"DISCOUNT_SEEKING\" }\n  ];\n  \n  for (const { pattern, weight, signal } of patterns) {\n    if (pattern.test(allText)) {\n      score += weight;\n      signals.push(signal);\n    }\n  }\n  \n  return { score: Math.min(1, score), signals };\n}\n\n// ================================================================\n// DETECT VIDEO TYPE FROM CONTENT\n// ================================================================\nfunction detectVideoType(title, description, dsResult) {\n  const text = `${title} ${description}`.toLowerCase();\n  \n  const solutionPatterns = [\n    /how\\s+(?:to|i)/i,\n    /step[\\s-]by[\\s-]step/i,\n    /(?:my\\s+)?(?:routine|regimen|protocol|system|method)/i,\n    /(?:what\\s+(?:worked|helped|fixed))/i,\n    /(?:complete|ultimate|full)\\s+guide/i,\n    /(?:cure|fix|solve|heal|treat|remedy)/i,\n    /(?:finally|actually)\\s+(?:worked|helped|fixed)/i\n  ];\n  \n  const frustrationPatterns = [\n    /why\\s+(?:am\\s+i|do\\s+i|does|is|can't|won't)/i,\n    /(?:symptoms|signs|causes|reasons)\\s+(?:of|for|why)/i,\n    /what(?:'s|\\s+is)\\s+(?:wrong|happening|causing)/i,\n    /(?:my\\s+)?(?:struggle|journey|battle|story)\\s+with/i,\n    /(?:living|dealing|coping)\\s+with/i\n  ];\n  \n  const decisionPatterns = [\n    /(?:\\bvs\\b|versus|compared)/i,\n    /(?:review|unboxing|first\\s+(?:look|impressions))/i,\n    /(?:best|top\\s+\\d+|ranking)/i,\n    /(?:worth\\s+(?:it|the|buying))/i,\n    /(?:honest|real)\\s+review/i\n  ];\n  \n  let solutionScore = 0;\n  let frustrationScore = 0;\n  let decisionScore = 0;\n  \n  for (const p of solutionPatterns) if (p.test(text)) solutionScore++;\n  for (const p of frustrationPatterns) if (p.test(text)) frustrationScore++;\n  for (const p of decisionPatterns) if (p.test(text)) decisionScore++;\n  \n  // Comment sentiment can indicate video type\n  if (dsResult.positiveRatio >= 0.35) solutionScore += 2;\n  else if (dsResult.positiveRatio >= 0.20) solutionScore += 1;\n  \n  if (dsResult.score >= 0.25) frustrationScore += 2;\n  else if (dsResult.score >= 0.15) frustrationScore += 1;\n  \n  const maxScore = Math.max(solutionScore, frustrationScore, decisionScore);\n  \n  if (maxScore === 0) return { type: \"UNKNOWN\", confidence: 0, scores: { solutionScore, frustrationScore, decisionScore } };\n  \n  let detectedType;\n  if (solutionScore === maxScore) detectedType = \"SOLUTION\";\n  else if (decisionScore === maxScore) detectedType = \"DECISION_POINT\";\n  else detectedType = \"FRUSTRATION\";\n  \n  const secondHighest = [solutionScore, frustrationScore, decisionScore].sort((a, b) => b - a)[1];\n  const confidence = maxScore > 0 ? (maxScore - secondHighest) / maxScore : 0;\n  \n  return { \n    type: detectedType, \n    confidence: Math.min(1, 0.3 + confidence * 0.7),\n    scores: { solutionScore, frustrationScore, decisionScore } \n  };\n}\n\n// ================================================================\n// COMPUTE FEATURES\n// ================================================================\nconst arResult = computeAR(comments);\nconst dsResult = computeDS(comments);\nconst ciResult = computeCI(commentTexts, videoData.snippet?.title || \"\", videoData.snippet?.description || \"\");\nconst videoTypeDetection = detectVideoType(\n  videoData.snippet?.title || \"\", \n  videoData.snippet?.description || \"\",\n  dsResult\n);\n\nconst AR = arResult.score;\nconst DS = dsResult.score;\nconst CI = ciResult.score;\n\nconst features = videoData.features || {};\nconst AI = features.AI || 0;\nconst V = features.V || 0;\nconst ER = features.ER || 0;\n\nfunction log10(x) { return Math.log(x) / Math.LN10; }\nconst AI_norm = Math.min(1, Math.max(0, AI / 2.5));\nconst V_norm = Math.min(1, log10(V + 1) / 4);\nconst ER_norm = Math.min(1, ER / 0.08);\n\n// ================================================================\n// DETERMINE EFFECTIVE VIDEO TYPE\n// ================================================================\nlet effectiveType = searchAxis;\nlet typeSource = \"SEARCH_AXIS\";\n\n// Map old axis names to new\nconst axisMap = {\n  'PAIN': 'FRUSTRATION',\n  'PROTOCOL': 'SOLUTION', \n  'BUYER': 'DECISION_POINT'\n};\nif (axisMap[searchAxis]) {\n  effectiveType = axisMap[searchAxis];\n}\n\nif (videoTypeDetection.confidence >= 0.3 || videoTypeDetection.type !== effectiveType) {\n  if ((searchAxis === \"FRUSTRATION\" || searchAxis === \"PAIN\") && videoTypeDetection.type === \"SOLUTION\") {\n    effectiveType = \"SOLUTION\";\n    typeSource = \"DETECTED_SOLUTION_VIDEO\";\n  }\n  else if (videoTypeDetection.confidence >= 0.5) {\n    effectiveType = videoTypeDetection.type;\n    typeSource = \"HIGH_CONFIDENCE_DETECTION\";\n  }\n}\n\n// ================================================================\n// CALCULATE OPPORTUNITY SCORE (v9.0 â€” includes AR)\n// \n// New weights with Affiliate Readiness:\n//   FRUSTRATION:     AI=0.25, V=0.15, ER=0.15, DS=0.20, AR=0.20, CI=0.05\n//   DECISION_POINT:  AI=0.25, V=0.15, ER=0.15, DS=0.05, AR=0.15, CI=0.25\n//   SOLUTION:        AI=0.30, V=0.15, ER=0.20, DS=0.05, AR=0.15, CI=0.05 + bonus\n// ================================================================\nlet opportunity_score;\nlet formulaUsed;\nlet positiveBonus = 0;\n\nif (effectiveType === \"FRUSTRATION\") {\n  opportunity_score = (0.25 * AI_norm) + (0.15 * V_norm) + (0.15 * ER_norm) + (0.20 * DS) + (0.20 * AR) + (0.05 * CI);\n  formulaUsed = \"FRUSTRATION_WEIGHTED\";\n} \nelse if (effectiveType === \"DECISION_POINT\") {\n  opportunity_score = (0.25 * AI_norm) + (0.15 * V_norm) + (0.15 * ER_norm) + (0.05 * DS) + (0.15 * AR) + (0.25 * CI);\n  formulaUsed = \"DECISION_POINT_WEIGHTED\";\n}\nelse {\n  // SOLUTION â€” satisfied audience with asking comments is ideal\n  if (dsResult.positiveRatio >= 0.35 && AR >= 0.10) {\n    positiveBonus = 0.15; // Satisfied audience PLUS asking for products = gold\n  } else if (dsResult.positiveRatio >= 0.35) {\n    positiveBonus = 0.10;\n  } else if (dsResult.positiveRatio >= 0.20) {\n    positiveBonus = 0.05;\n  }\n  \n  opportunity_score = (0.30 * AI_norm) + (0.15 * V_norm) + (0.20 * ER_norm) + (0.05 * DS) + (0.15 * AR) + (0.05 * CI) + positiveBonus;\n  formulaUsed = \"SOLUTION_WEIGHTED\";\n}\n\n// ================================================================\n// BUILD TAGS (v9.0 â€” opportunity-focused)\n// ================================================================\nconst tags = [];\n\n// === AUTHORITY IMBALANCE ===\nif (AI >= 2.0) tags.push(\"EXCEPTIONAL_OPPORTUNITY\");\nelse if (AI >= 1.5) tags.push(\"STRONG_OPPORTUNITY\");\nelse if (AI >= 1.0) tags.push(\"CONFIRMED_OPPORTUNITY\");\nelse tags.push(\"WEAK_OPPORTUNITY\");\n\n// === VELOCITY ===\nif (V >= 1000) tags.push(\"HIGH_MOMENTUM\");\nelse if (V >= 300) tags.push(\"MODERATE_MOMENTUM\");\nelse tags.push(\"LOW_MOMENTUM\");\n\n// === ENGAGEMENT ===\nif (ER >= 0.05) tags.push(\"HIGH_ENGAGEMENT\");\nelse if (ER >= 0.02) tags.push(\"MODERATE_ENGAGEMENT\");\nelse tags.push(\"LOW_ENGAGEMENT\");\n\n// === AFFILIATE READINESS (NEW) ===\nif (AR >= 0.25) tags.push(\"AFFILIATE_GOLDMINE\");\nelse if (AR >= 0.15) tags.push(\"HIGH_AFFILIATE_POTENTIAL\");\nelse if (AR >= 0.08) tags.push(\"GOOD_AFFILIATE_POTENTIAL\");\nelse tags.push(\"LOW_AFFILIATE_SIGNALS\");\n\n// === DURATION ===\nconst durationSecs = videoData.stats?.durationSecs || 0;\nif (durationSecs >= 1800) tags.push(\"DEEP_DIVE_30M+\");\nelse if (durationSecs >= 1200) tags.push(\"DEEP_DIVE_20M+\");\nelse if (durationSecs >= 600) tags.push(\"STANDARD_LENGTH\");\nelse if (durationSecs >= 180) tags.push(\"SHORT_FORM\");\n\n// === SEARCH CONTEXT ===\ntags.push(`SEARCH_${searchAxis}`);\nif (effectiveType !== searchAxis && effectiveType !== axisMap[searchAxis]) {\n  tags.push(`DETECTED_${effectiveType}`);\n  tags.push(\"TYPE_MISMATCH_GOLD\");\n}\n\n// === COMMENT SENTIMENT ===\nif (dsResult.positiveRatio >= 0.35) tags.push(\"SATISFIED_AUDIENCE\");\nelse if (dsResult.positiveRatio >= 0.20) tags.push(\"POSITIVE_SENTIMENT\");\n\nif (DS >= 0.30) tags.push(\"DESPERATE_AUDIENCE\");\nelse if (DS >= 0.15) tags.push(\"SEEKING_HELP\");\nelse if (DS >= 0.05) tags.push(\"SOME_PAIN_SIGNALS\");\n\n// === COMMERCIAL INTENT ===\nif (CI >= 0.40) tags.push(\"STRONG_BUYING_INTENT\");\nelse if (CI >= 0.20) tags.push(\"COMPARISON_SHOPPING\");\nelse if (CI >= 0.10) tags.push(\"LIGHT_COMMERCIAL_INTENT\");\n\n// === FINAL QUALITY TIER ===\nif (opportunity_score >= 0.70) tags.push(\"TIER_EXCELLENT\");\nelse if (opportunity_score >= 0.60) tags.push(\"TIER_STRONG\");\nelse if (opportunity_score >= 0.45) tags.push(\"TIER_GOOD\");\nelse tags.push(\"TIER_WEAK\");\n\n// ================================================================\n// FORMAT TOP COMMENTS\n// ================================================================\nconst topCommentsText = comments\n  .slice(0, 15)\n  .map(c => `[${c.likes} likes] ${c.author}: ${c.text}`)\n  .join(\"\\n\\n\");\n\n// ================================================================\n// OUTPUT\n// ================================================================\nreturn {\n  json: {\n    id: videoData.id || videoData.video_id,\n    snippet: videoData.snippet || {},\n    statistics: videoData.statistics || {},\n    contentDetails: videoData.contentDetails || {},\n    channelStatistics: videoData.channelStatistics || {},\n    channelSnippet: channelItem.snippet || {},\n    channelStatisticsDetailed: channelItem.statistics || {},\n    \n    search_label: videoData.search_label || \"\",\n    search_intent: searchAxis,\n    search_q: videoData.search_q || \"\",\n    search_q_full: videoData.search_q_full || \"\",\n    \n    // FEATURES (v9.0 â€” includes AR)\n    features: {\n      AI: +AI.toFixed(3),\n      V: +V.toFixed(1),\n      ER: +ER.toFixed(5),\n      AR: +AR.toFixed(3),  // NEW: Affiliate Readiness\n      DS: +DS.toFixed(3),\n      CI: +CI.toFixed(3)\n    },\n    \n    stats: {\n      opportunity_score: +opportunity_score.toFixed(4),  // Renamed from leak_score\n      stage1_score: videoData.stats?.stage1_score || 0,\n      daysOld: videoData.stats?.daysOld || 0,\n      durationSecs: durationSecs,\n      tags: tags.join(\", \")\n    },\n    \n    _typeDetection: {\n      searchAxis: searchAxis,\n      detectedType: videoTypeDetection.type,\n      effectiveType: effectiveType,\n      typeSource: typeSource,\n      detectionConfidence: +videoTypeDetection.confidence.toFixed(2),\n      detectionScores: videoTypeDetection.scores\n    },\n    \n    _scoringInfo: {\n      formulaUsed: formulaUsed,\n      positiveBonus: +positiveBonus.toFixed(3),\n      effectiveType: effectiveType,\n      weights: formulaUsed === \"FRUSTRATION_WEIGHTED\" \n        ? \"AI=0.25, V=0.15, ER=0.15, DS=0.20, AR=0.20, CI=0.05\"\n        : formulaUsed === \"DECISION_POINT_WEIGHTED\"\n        ? \"AI=0.25, V=0.15, ER=0.15, DS=0.05, AR=0.15, CI=0.25\"\n        : \"AI=0.30, V=0.15, ER=0.20, DS=0.05, AR=0.15, CI=0.05 +bonus\"\n    },\n    \n    // NEW: Affiliate Readiness Analysis\n    _arAnalysis: {\n      score: +AR.toFixed(3),\n      signals: arResult.signals,\n      askingCount: arResult.askingCount,\n      appREDACTEDBD9DCF: arResult.appREDACTEDBD9DCF,\n      totalAnalyzed: arResult.totalAnalyzed,\n      debug: arResult.debug\n    },\n    \n    _dsAnalysis: {\n      score: +DS.toFixed(3),\n      signals: dsResult.signals,\n      positiveRatio: +dsResult.positiveRatio.toFixed(2),\n      positiveCount: dsResult.positiveCount,\n      desperateCount: dsResult.desperateCount,\n      keywordHits: dsResult.keywordHits,\n      debug: dsResult.debug\n    },\n    \n    _ciAnalysis: {\n      score: +CI.toFixed(3),\n      signals: ciResult.signals\n    },\n    \n    _raw: videoData._raw || {},\n    topComments: comments.slice(0, 15),\n    topCommentsText,\n    \n    _commentStats: {\n      total_fetched: commentItems.length,\n      after_filtering: comments.length,\n      avg_likes: comments.length > 0 \n        ? +(comments.reduce((s, c) => s + c.likes, 0) / comments.length).toFixed(1) \n        : 0\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -432
+      ],
+      "id": "ed4fe49c-47c9-41ba-ac61-1de82b278a21",
+      "name": "Code â€” Opportunity Hunter Stage 2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[PROMPT REDACTED - 1078 chars]",
+        "options": {
+          "systemMessage": "[PROMPT REDACTED - 2355 chars]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        896,
+        -432
+      ],
+      "id": "594a3b9e-aad4-4688-ab24-f0a3cf2b9bac",
+      "name": "Agent â€” The Profiler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Clean & Parse Profiler (v9.0 Standardized)\n// \n// CANONICAL OUTPUT: All snake_case keys\n// Now includes: perplexity_prompts, lead_magnet object, content_angle\n// ================================================================\n\n// 1) PARSE PROFILER OUTPUT\nconst profilerRaw = $input.first().json.output || \"\";\nlet profilerData = {};\n\ntry {\n  const jsonMatch = profilerRaw.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) profilerData = JSON.parse(jsonMatch[0]);\n} catch (e) {\n  profilerData = { \n    the_who: \"Parse Error\", \n    the_wall: \"\", \n    the_hook: \"\", \n    perplexity_prompts: [],\n    lead_magnet: {},\n    content_angle: \"\"\n  };\n}\n\n// 2) GET DATA\nconst videoContext = $('Set â€” Current Video Context').item.json;\nconst stage2Data = $('Code â€” Opportunity Hunter Stage 2').item.json;\nconst carousel = $('Config â€” Category Carousel').first().json;\n\n// 3) HELPERS\nfunction parseDuration(d) {\n  if (!d) return 0;\n  const m = d.match(/PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?/);\n  if (!m) return 0;\n  return (parseInt(m[1]||'0')*3600) + (parseInt(m[2]||'0')*60) + parseInt(m[3]||'0');\n}\n\nfunction ensureArray(v) {\n  if (Array.isArray(v)) return v;\n  if (typeof v === 'string' && v.trim()) return [v.trim()];\n  return [];\n}\n\n// 4) EXTRACT VIDEO DATA\nconst vid = videoContext.snippet || {};\nconst vidStats = videoContext.statistics || {};\nconst content = videoContext.contentDetails || {};\n\nconst video_id = videoContext.video_id || videoContext.id || \"\";\nconst channel_id = videoContext.channel_id || vid.channelId || \"\";\n\n// 5) GET CHANNEL DATA FROM STAGE 2\nconst chSnip = stage2Data.channelSnippet || {};\nconst chStats = stage2Data.channelStatisticsDetailed || stage2Data.channelStatistics || {};\n\n// 6) BUILD CANONICAL OUTPUT\nconst durationSecs = parseDuration(content.duration);\nconst daysOld = stage2Data.stats?.daysOld || 0;\n\n// Extract perplexity prompts as array\nconst perplexityPrompts = ensureArray(profilerData.perplexity_prompts);\n\n// Extract lead magnet\nconst leadMagnet = profilerData.lead_magnet || {};\n\nreturn [{\n  json: {\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // PRIMARY KEYS\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    leak_id: `${video_id}-${carousel.run_id}`,\n    video_id: video_id,\n    channel_id: channel_id,\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // RUN DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    run_id: carousel.run_id || \"\",\n    run_timestamp: carousel.run_timestamp || new Date().toISOString(),\n    day_key: carousel.day_key || \"\",\n    niche: carousel.target_macro_category || \"\",\n    brand_outlet: carousel.brand_outlet || \"\",\n    brand_outlet_name: carousel.brand_outlet_name || \"\",\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // SEARCH DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    search_label: videoContext.search_label || stage2Data.search_label || \"\",\n    search_intent: videoContext.search_intent || stage2Data.search_intent || \"\",\n    search_q_full: videoContext.search_q_full || stage2Data.search_q_full || \"\",\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // VIDEO DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    video_url: `https://youtube.com/watch?v=${video_id}`,\n    video_title: vid.title || \"\",\n    video_description: (vid.description || \"\").substring(0, 500),\n    video_publish_date: vid.publishedAt || \"\",\n    video_duration: durationSecs,\n    video_thumbnail_url: vid.thumbnails?.high?.url || vid.thumbnails?.default?.url || \"\",\n    video_views: parseInt(vidStats.viewCount || 0),\n    video_likes: parseInt(vidStats.likeCount || 0),\n    video_comments_count: parseInt(vidStats.commentCount || 0),\n    video_top_comments: stage2Data.topCommentsText || \"\",\n    video_tags: (vid.tags || []).slice(0, 10).join(\", \"),\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // CHANNEL DATA\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    channel_title: chSnip.title || vid.channelTitle || \"\",\n    channel_url: `https://youtube.com/channel/${channel_id}`,\n    channel_country: chSnip.country || \"\",\n    channel_subs: parseInt(chStats.subscriberCount || 0),\n    channel_total_views: parseInt(chStats.viewCount || 0),\n    channel_video_count: parseInt(chStats.videoCount || 0),\n    channel_handle: chSnip.customUrl || \"\",\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // ALGORITHM SCORES\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    opportunity_score: stage2Data.stats?.opportunity_score || stage2Data.stats?.leak_score || 0,\n    days_old: daysOld,\n    tags_triggered: stage2Data.stats?.tags || \"\",\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // FEATURE SCORES (v9.0 â€” includes AR)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    feature_ai: stage2Data.features?.AI || 0,\n    feature_v: stage2Data.features?.V || 0,\n    feature_er: stage2Data.features?.ER || 0,\n    feature_ar: stage2Data.features?.AR || 0,  // NEW: Affiliate Readiness\n    feature_ds: stage2Data.features?.DS || 0,\n    feature_ci: stage2Data.features?.CI || 0,\n    feature_pf: 0, // Deprecated, kept for schema compatibility\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // PROFILER OUTPUT (NEW STRUCTURE)\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    the_who: profilerData.the_who || \"\",\n    the_wall: profilerData.the_wall || \"\",  // Renamed from the_pain\n    the_hook: profilerData.the_hook || \"\",\n    \n    // Research prompts (NEW)\n    perplexity_prompt_1: perplexityPrompts[0] || \"\",\n    perplexity_prompt_2: perplexityPrompts[1] || \"\",\n    perplexity_prompt_3: perplexityPrompts[2] || \"\",\n    \n    // Lead magnet (NEW)\n    lead_magnet_title: leadMagnet.title || \"\",\n    lead_magnet_hook: leadMagnet.hook || \"\",\n    lead_magnet_format: leadMagnet.format || \"checklist\",\n    \n    // Content angle (NEW)\n    content_angle: profilerData.content_angle || \"\",\n    \n    // Legacy fields (kept for backward compatibility with AAS 2/3)\n    protocol_name: profilerData.the_hook || \"\",  // Mapped for compatibility\n    the_pain: profilerData.the_wall || \"\",  // Alias\n    lead_magnet_idea: leadMagnet.title || \"\",  // Alias\n    phase_1_hardware: \"\",  // Deprecated\n    phase_2_software: \"\",  // Deprecated\n    phase_3_maintenance: \"\",  // Deprecated\n    \n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    // PIPELINE STATUS\n    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n    status: \"STRATEGY_COMPLETE\",\n    _stage: \"STRATEGY_COMPLETE\",\n    _created_at: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -432
+      ],
+      "id": "9f9d50fe-63b0-4207-9738-2e76ed3cb279",
+      "name": "Code â€” Clean & Parse Profiler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Config â€” Macro-Category Carousel (v4.0)\n// Two-Level Round Robin: Brand Outlet â†’ Category\n// \n// ARCHITECTURE:\n// - 6 Brand Outlets (domains/socials)\n// - 90 Categories across outlets\n// - 2x daily runs = ~2-3 pieces per outlet per week\n// ================================================================\n\n// ================================================================\n// BRAND OUTLETS & CATEGORIES\n// Each outlet = domain + social accounts\n// ================================================================\nconst BRAND_OUTLETS = [\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // HEALTH (22 categories) â€” Physical health, chronic conditions\n  // High frustration, high-ticket supplements/devices/coaching\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  {\n    outlet_key: \"HEALTH\",\n    outlet_name: \"Health & Vitality\",\n    categories: [\n      // Metabolic & Weight\n      \"Weight Loss Plateaus & Metabolic Damage\",\n      \"Low-Carb, Keto & Carnivore Struggles\",\n      \"Gut Health & Digestive Issues\",\n      \n      // Sleep & Energy\n      \"Sleep Problems & Insomnia Solutions\",\n      \"Chronic Fatigue & Energy Restoration\",\n      \n      // Hormones\n      \"Women's Hormones (PCOS, PMS, Perimenopause)\",\n      \"Menopause Symptom Relief\",\n      \"Men's Testosterone & Vitality\",\n      \"Fertility Struggles & IVF Support\",\n      \n      // Pain & Mobility\n      \"Chronic Pain & Inflammation\",\n      \"Back Pain & Sciatica Relief\",\n      \"Joint Pain & Arthritis Management\",\n      \"Physical Therapy & Injury Recovery\",\n      \n      // Fitness\n      \"Strength Training & Body Recomposition\",\n      \"Home Gym Setup & Equipment\",\n      \"Running & Endurance Training\",\n      \n      // Biohacking\n      \"Biohacking & Longevity Optimization\",\n      \"Supplements & Nootropics\",\n      \n      // Specific Conditions\n      \"Hair Loss & Restoration\",\n      \"Skin Conditions & Acne Solutions\",\n      \"Tinnitus & Hearing Solutions\",\n      \"Addiction Recovery & Sobriety\"\n    ]\n  },\n\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // MIND (16 categories) â€” Mental health, productivity, focus\n  // Coaching/course affiliates, apps, supplements\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  {\n    outlet_key: \"MIND\",\n    outlet_name: \"Mind & Performance\",\n    categories: [\n      // Mental Health\n      \"Anxiety & Panic Management\",\n      \"Depression & Mood Support\",\n      \"Stress & Burnout Recovery\",\n      \"Nervous System Regulation\",\n      \n      // Neurodivergence\n      \"ADHD Management & Focus\",\n      \"Autism & Neurodivergence Support\",\n      \n      // Productivity\n      \"Focus & Deep Work Systems\",\n      \"Procrastination & Motivation\",\n      \"Time Management & Prioritization\",\n      \"Digital Detox & Screen Addiction\",\n      \n      // Self-Improvement\n      \"Habit Building & Behavior Change\",\n      \"Confidence & Social Anxiety\",\n      \"Public Speaking & Communication\",\n      \"Memory & Learning Optimization\",\n      \n      // Mindfulness\n      \"Meditation & Mindfulness Practice\",\n      \"Journaling & Self-Reflection\"\n    ]\n  },\n\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // WEALTH (18 categories) â€” Finance, career, business (trimmed)\n  // Courses, tools, services affiliates\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  {\n    outlet_key: \"WEALTH\",\n    outlet_name: \"Wealth & Career\",\n    categories: [\n      // Personal Finance\n      \"Debt Payoff & Credit Repair\",\n      \"Budgeting & Money Management\",\n      \"Credit Cards & Travel Rewards\",\n      \"Investing for Beginners\",\n      \"Retirement Planning & FIRE\",\n      \n      // Real Estate\n      \"Home Buying & Mortgage Strategy\",\n      \"Real Estate Investing\",\n      \n      // Career\n      \"Career Change & Transitions\",\n      \"Job Search & Interview Prep\",\n      \"Salary Negotiation\",\n      \"Remote Work & Digital Nomad\",\n      \"Freelancing & Side Hustles\",\n      \n      // Business\n      \"Starting an Online Business\",\n      \"Agency & Service Business\",\n      \"E-Commerce Operations\",\n      \"Email Marketing & Automation\",\n      \"SEO & Content Marketing\",\n      \"Lead Generation & Sales\"\n    ]\n  },\n\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // HOME (20 categories) â€” Home, tech, auto, sustainability\n  // Product-heavy, device affiliates\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  {\n    outlet_key: \"HOME\",\n    outlet_name: \"Home & Technology\",\n    categories: [\n      // Home Tech\n      \"Smart Home Setup & Automation\",\n      \"Home Security & Cameras\",\n      \"Home Networking & Wi-Fi\",\n      \"Home Lab & Self-Hosting\",\n      \n      // Appliances & Maintenance\n      \"Appliance Selection & Repairs\",\n      \"HVAC & Climate Control\",\n      \"Air Quality & Purification\",\n      \"Water Filtration Systems\",\n      \n      // Home Improvement\n      \"Kitchen & Bath Renovation\",\n      \"DIY Home Repair\",\n      \"Organization & Storage\",\n      \n      // Energy & Sustainability\n      \"Solar & Battery Backup\",\n      \"Energy Efficiency & Electrification\",\n      \"Emergency Preparedness\",\n      \n      // Tech & Privacy\n      \"Cybersecurity & Privacy Tools\",\n      \"AI Tools & Productivity\",\n      \"Content Creator Gear & Setup\",\n      \n      // Auto\n      \"Electric Vehicles & Charging\",\n      \"Car Care & Detailing\",\n      \n      // Food & Kitchen\n      \"Espresso & Coffee Setup\"\n    ]\n  },\n\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // LIFE STAGES (14 categories) â€” Transitions, family, pets\n  // High-frustration life moments, coaching/product affiliates\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  {\n    outlet_key: \"LIFE_STAGES\",\n    outlet_name: \"Life Transitions & Family\",\n    categories: [\n      // Parenting\n      \"Newborn Sleep & Colic\",\n      \"Toddler Behavior & Discipline\",\n      \"Parenting Teens & Digital Safety\",\n      \"Special Needs Parenting\",\n      \n      // Relationships\n      \"Marriage & Relationship Repair\",\n      \"Dating After Divorce\",\n      \"Co-Parenting & Blended Families\",\n      \n      // Seniors\n      \"Tech Help for Seniors\",\n      \"Caregiver Support & Elder Care\",\n      \"Retirement Lifestyle Transition\",\n      \n      // Pets\n      \"Puppy Training & Dog Behavior\",\n      \"Cat Behavior & Health\",\n      \"Pet Anxiety & Separation Issues\",\n      \n      // Major Transitions\n      \"Divorce Process & Recovery\"\n    ]\n  }\n];\n\n// ================================================================\n// DENVER TIME HELPERS\n// ================================================================\nfunction getDenverTime() {\n  const now = new Date();\n  const fmt = new Intl.DateTimeFormat('en-US', {\n    timeZone: 'America/Denver',\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n    hour: '2-digit',\n    hour12: false\n  });\n  const parts = fmt.formatToParts(now);\n  const y = parts.find(p => p.type === 'year').value;\n  const m = parts.find(p => p.type === 'month').value;\n  const d = parts.find(p => p.type === 'day').value;\n  const h = parseInt(parts.find(p => p.type === 'hour').value);\n  return {\n    dayKey: `${y}-${m}-${d}`,\n    hour: h,\n    isAM: h < 12\n  };\n}\n\n// ================================================================\n// STATE MANAGEMENT â€” TWO-LEVEL ROUND ROBIN\n// ================================================================\nconst data = $getWorkflowStaticData('global');\nconst denver = getDenverTime();\nconst runType = denver.isAM ? 'AM' : 'PM';\n\n// Initialize state if needed\nif (typeof data.outletIndex !== 'number') data.outletIndex = 0;\nif (typeof data.categoryIndexByOutlet !== 'object' || data.categoryIndexByOutlet === null) {\n  data.categoryIndexByOutlet = {};\n}\nif (typeof data.lastDayKey !== 'string') data.lastDayKey = '';\nif (typeof data.lastRunType !== 'string') data.lastRunType = '';\n\n// ================================================================\n// DUPLICATE RUN PREVENTION\n// ================================================================\nconst firstRun = data.lastDayKey === '';\nconst sameDay = data.lastDayKey === denver.dayKey;\nconst alreadyRanThisSlot = sameDay && data.lastRunType === runType;\n\nif (alreadyRanThisSlot) {\n  return {\n    json: {\n      _skip: true,\n      _reason: `Already ran ${runType} slot today`,\n      day_key: denver.dayKey,\n      run_type: runType\n    }\n  };\n}\n\n// ================================================================\n// TWO-LEVEL ROUND ROBIN LOGIC\n// \n// Level 1: Rotate through brand outlets (ensures each outlet gets hit regularly)\n// Level 2: Rotate through categories within that outlet\n// \n// Result: With 6 outlets and 14 runs/week, each outlet gets ~2-3 hits/week\n// ================================================================\n\n// LEVEL 1: Pick the next brand outlet (round robin)\nconst currentOutlet = BRAND_OUTLETS[data.outletIndex % BRAND_OUTLETS.length];\n\n// LEVEL 2: Pick the next category within that outlet (round robin)\nconst outletKey = currentOutlet.outlet_key;\nconst categories = currentOutlet.categories;\n\n// Initialize category index for this outlet if needed\nif (typeof data.categoryIndexByOutlet[outletKey] !== 'number') {\n  data.categoryIndexByOutlet[outletKey] = 0;\n}\n\nconst categoryIndex = data.categoryIndexByOutlet[outletKey] % categories.length;\nconst selectedCategory = categories[categoryIndex];\n\n// ================================================================\n// ADVANCE BOTH POINTERS (except on first run)\n// ================================================================\nif (!firstRun) {\n  // Advance category index for this outlet\n  data.categoryIndexByOutlet[outletKey] = (categoryIndex + 1) % categories.length;\n  \n  // Advance outlet index\n  data.outletIndex = (data.outletIndex + 1) % BRAND_OUTLETS.length;\n}\n\n// Update timestamp state\ndata.lastDayKey = denver.dayKey;\ndata.lastRunType = runType;\n\n// ================================================================\n// BUILD RUN ID\n// ================================================================\nconst randomSuffix = Math.random().toString(36).substring(2, 8);\nconst run_id = `RUN-${denver.dayKey}-${runType}-${outletKey}-${randomSuffix}`;\n\n// ================================================================\n// COMPUTE ROTATION STATS\n// ================================================================\nconst totalCategories = BRAND_OUTLETS.reduce((sum, o) => sum + o.categories.length, 0);\nconst outletCategoryCount = categories.length;\n\n// How many runs until this specific category repeats?\n// = outletCategoryCount Ã— number of outlets\nconst categoryRepeatCycle = outletCategoryCount * BRAND_OUTLETS.length;\n\n// ================================================================\n// OUTPUT\n// ================================================================\nreturn {\n  json: {\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // CORE CONFIG â€” used by downstream nodes\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    target_macro_category: selectedCategory,\n    brand_outlet: outletKey,\n    brand_outlet_name: currentOutlet.outlet_name,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // RUN IDENTIFICATION\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    run_id: run_id,\n    run_timestamp: new Date().toISOString(),\n    day_key: denver.dayKey,\n    run_type: runType,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // ROTATION STATE â€” for debugging and monitoring\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    outlet_index: data.outletIndex,\n    category_index: categoryIndex,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // STRATEGY FLAG â€” downstream uses this\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    search_strategy: \"TRIPLE_AXIS\",\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // METADATA\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    total_outlets: BRAND_OUTLETS.length,\n    total_categories: totalCategories,\n    outlet_category_count: outletCategoryCount,\n    runs_per_week_estimate: 14, // 2x daily\n    outlet_hits_per_week: Math.floor(14 / BRAND_OUTLETS.length), // ~2\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // DEBUG INFO\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    _stateInfo: {\n      outlet_index_stored: data.outletIndex,\n      category_indices: { ...data.categoryIndexByOutlet },\n      denver_hour: denver.hour,\n      is_am: denver.isAM,\n      category_repeat_cycle_runs: categoryRepeatCycle\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5056,
+        -80
+      ],
+      "id": "3348bdc0-b343-4557-be91-b2dd7ac41330",
+      "name": "Config â€” Category Carousel"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Split Out â€” Searches": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Build Axis-Specific Search Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” YouTube Search": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Tag Results with Axis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Stamp Query Metadata": {
+      "main": [
+        [
+          {
+            "node": "Split Out â€” Search Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out â€” Search Items": {
+      "main": [
+        [
+          {
+            "node": "Merge â€” Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge â€” Search Results": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Batch IDs (Dedup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Batch IDs (Dedup)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches â€” Video Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” Get Video Stats": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches â€” Video Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Extract Channel IDs": {
+      "main": [
+        [
+          {
+            "node": "API â€” Get Channel Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” Get Channel Stats": {
+      "main": [
+        [
+          {
+            "node": "Merge â€” Videos + Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge â€” Videos + Channels": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Attach Channel Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Attach Channel Stats": {
+      "main": [
+        [
+          {
+            "node": "Split Out â€” Stats Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out â€” Stats Items": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Opportunity Hunter Stage 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over â€” Winners": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Set â€” Current Video Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” Get Channel Details": {
+      "main": [
+        [
+          {
+            "node": "API â€” Get Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” Get Comments": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Opportunity Hunter Stage 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Upsert Videos": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Upsert Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Upsert Channels": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Upsert Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Upsert Searches": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Upsert Runs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Upsert Runs": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Build Master Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Upsert Traffic Leaks": {
+      "main": [
+        [
+          {
+            "node": "Loop Over â€” Winners",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o (Strategist)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent â€” The Profiler",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set â€” Current Video Context": {
+      "main": [
+        [
+          {
+            "node": "API â€” Get Channel Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Quality Gate": {
+      "main": [
+        [
+          {
+            "node": "If â€” PASSED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If â€” PASSED": {
+      "main": [
+        [
+          {
+            "node": "Agent â€” The Profiler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over â€” Winners",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger â€” 2x Daily Traffic Leak Patrol": {
+      "main": [
+        [
+          {
+            "node": "Config â€” Category Carousel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Tag Results with Axis": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Stamp Query Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o (Query Architect)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent â€” Query Architect (Opportunity Axis)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Build Axis-Specific Search Config": {
+      "main": [
+        [
+          {
+            "node": "API â€” YouTube Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches â€” Video Stats": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Merge Batch Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API â€” Get Video Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Merge Batch Results": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Extract Channel IDs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge â€” Videos + Channels",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code â€” Build Master Context": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Upsert Traffic Leaks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent â€” Query Architect (Opportunity Axis)": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Parse Opportunity Axis Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Parse Opportunity Axis Plan": {
+      "main": [
+        [
+          {
+            "node": "Split Out â€” Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Opportunity Hunter Stage 1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over â€” Winners",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Opportunity Hunter Stage 2": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Quality Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent â€” The Profiler": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Clean & Parse Profiler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Clean & Parse Profiler": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Upsert Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config â€” Category Carousel": {
+      "main": [
+        [
+          {
+            "node": "Agent â€” Query Architect (Opportunity Axis)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "timezone": "America/Denver",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "Gqu8ge7IqmtyuAaG",
+    "timeSavedPerExecution": 90
+  },
+  "versionId": "73bf28cb-da34-4f14-bfae-49da69601fcb",
+  "meta": {
+    "instanceId": "ca812eb3564963eff00a3a24177fd9ff074e03d85e8d765e49b67aad3f0657de"
+  },
+  "id": "sAoASpejK2kNsVMJ",
+  "tags": [
+    {
+      "updatedAt": "2025-12-08T19:48:42.564Z",
+      "createdAt": "2025-12-08T19:48:42.564Z",
+      "id": "zU2QjEuyyFecYpw2",
+      "name": "AI Agency"
+    }
+  ],
+  "_sanitized": {
+    "timestamp": "2026-01-07T21:45:28.242143",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": true
+  }
+}

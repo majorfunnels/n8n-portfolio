@@ -1,0 +1,1025 @@
+{
+  "name": "AAS 2: Copy",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -800,
+        272
+      ],
+      "id": "c8be774d-f3da-468e-bd6a-ae55dd172c82",
+      "name": "Loop â€” Item Processor"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        416,
+        272
+      ],
+      "id": "f3bd1115-63d9-4ded-9bbd-3a09c1f3ef60",
+      "name": "Claude Sonnet 4",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the raw input\nconst input = $input.first().json;\nlet parsed;\n\ntry {\n  // Get raw text from potential agent output locations\n  // We check input.text, input.output, etc. to handle different agent return types\n  let raw = input.text || input.output || input.response || (input.message && input.message.content) || JSON.stringify(input);\n\n  // --- ROBUST JSON EXTRACTION ---\n  // Agents sometimes add conversational fluff (\"Here is the JSON...\").\n  // We extract everything between the first '{' and last '}' to isolate the object.\n  const firstBrace = raw.indexOf('{');\n  const lastBrace = raw.lastIndexOf('}');\n\n  if (firstBrace !== -1 && lastBrace !== -1) {\n    raw = raw.substring(firstBrace, lastBrace + 1);\n  }\n\n  // Parse the cleaned string\n  parsed = JSON.parse(raw);\n\n} catch (e) {\n  throw new Error(`Failed to parse Script Agent JSON. Raw output was not valid JSON. Error: ${e.message}`);\n}\n\n// 2. Validate essential fields\nif (!parsed.video_script) {\n  throw new Error(\"Missing 'video_script' field in Agent output.\");\n}\n\n// --- CLEANING FOR AUDIO (TTS) ---\n// Create a clean version specifically for the voiceover engine.\nlet cleanText = parsed.video_script;\n\n// A. Specific TTS Improvements (Handle BEFORE general deletion)\n// Convert pause instructions like (long pause) to ellipses for natural TTS timing\ncleanText = cleanText.replace(/\\(pause.*?\\)/gi, '...'); \ncleanText = cleanText.replace(/\\[pause.*?\\]/gi, '...');\n\n// B. Remove Visual Cues in [brackets] and (parentheses)\n// This strips out [Visual: Man walking] or (Camera zooms in)\ncleanText = cleanText.replace(/\\[.*?\\]/g, ''); \ncleanText = cleanText.replace(/\\(.*?\\)/g, ''); \n\n// C. Remove Markdown formatting\ncleanText = cleanText.replace(/\\*\\*(.*?)\\*\\*/g, '$1'); // Bold (**text**)\ncleanText = cleanText.replace(/\\*(.*?)\\*/g, '$1');      // Italics (*text*)\ncleanText = cleanText.replace(/__(.*?)__/g, '$1');      // Bold (__text__)\ncleanText = cleanText.replace(/_(.*?)_/g, '$1');        // Italics (_text_)\n\n// D. Remove \"Rationale\" footer if present (prevents voice reading metadata)\nconst rationaleIndex = cleanText.toLowerCase().indexOf('rationale:');\nif (rationaleIndex !== -1) {\n    cleanText = cleanText.substring(0, rationaleIndex);\n}\n\n// E. Normalize whitespace (remove double spaces left by deletions)\ncleanText = cleanText.replace(/\\s+/g, ' ').trim();\n\n\n// 3. Return the Data\nreturn {\n  json: {\n    // The Human-Readable Script (Keep formatting/visuals for the video editor/human review)\n    video_script: parsed.video_script,\n    \n    // The Robot-Readable Script (Clean for ElevenLabs) -> consistent naming with Workflow 2\n    voiceover_text: cleanText,\n    \n    hook_rationale: parsed.hook_rationale || \"No rationale provided\",\n    \n    // Pass through context (IDs, keywords, etc.) from previous steps\n    ...$('Loop â€” Item Processor').item.json,\n    \n    // Pass through research source for debugging/logging\n    research_source: $('Code â€” Parse Research').item.json.formatted_source_map\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        448
+      ],
+      "id": "3e6824ba-ff34-4606-9257-56494dc280f7",
+      "name": "Code â€” Script JSON Cleaner",
+      "notesInFlow": true,
+      "notes": "Generates keyword-rich, informational pin descriptions that comply with Pinterest's guidelines for AI-generated content."
+    },
+    {
+      "parameters": {
+        "model": "sonar-pro",
+        "messages": {
+          "message": [
+            {
+              "content": "You are The Researcher â€” a senior content strategist who digs deep into topics to uncover insights that make content credible and valuable.\n\n## YOUR MISSION\nResearch the topic thoroughly so the Copy Chief can write authoritative, well-cited content that:\n1. Demonstrates genuine expertise (not surface-level fluff)\n2. Addresses the specific WALL (barrier) the audience has hit\n3. Provides actionable insights backed by evidence\n4. Builds trust through accurate, verifiable information\n\n## RESEARCH PRIORITIES\n1. Root causes â€” Why does THE WALL exist? What's the underlying mechanism?\n2. Common mistakes â€” What do people try that doesn't work, and why?\n3. Evidence-based solutions â€” What actually works, according to research or expert consensus?\n4. Counterintuitive insights â€” What do most people get wrong about this topic?\n5. Specific details â€” Names, numbers, studies, quotes that add credibility\n\n## WHAT MAKES GREAT RESEARCH\n- Specific > Generic (exact stats, named studies, real examples)\n- Mechanisms > Claims (\"here's WHY it works\" not just \"it works\")\n- Nuance > Absolutes (acknowledge edge cases and limitations)\n- Recent > Outdated (prioritize current information)\n- Primary sources > Aggregators (studies, experts, original reports)\n\n## OUTPUT FORMAT\nReturn ONLY valid JSON. No markdown, no commentary, no preamble.\n\n{\n  \"topic_overview\": \"2-3 sentence summary of the core issue\",\n  \"the_wall_explained\": \"Why this specific barrier exists â€” the mechanism behind it\",\n  \"common_mistakes\": [\n    {\n      \"mistake\": \"What people try\",\n      \"why_fails\": \"Why it doesn't work\"\n    }\n  ],\n  \"key_insights\": [\n    {\n      \"insight\": \"The finding or fact\",\n      \"source\": \"Where this comes from (study, expert, publication)\",\n      \"implication\": \"What this means for the audience\"\n    }\n  ],\n  \"counterintuitive_angle\": \"The surprising truth most people miss\",\n  \"expert_perspectives\": [\n    {\n      \"expert\": \"Name and credentials\",\n      \"quote_or_position\": \"What they say about this topic\"\n    }\n  ],\n  \"actionable_takeaways\": [\n    \"Specific thing the audience can do\"\n  ],\n  \"content_hooks\": [\n    \"Compelling angles or headlines based on research\"\n  ],\n  \"citations\": [\n    {\n      \"claim\": \"The specific claim\",\n      \"source\": \"Publication, study, or expert\",\n      \"url\": \"Link if available\",\n      \"date\": \"When published if known\"\n    }\n  ],\n  \"research_gaps\": \"What you couldn't verify or find solid sources for\"\n}\n\n## RULES\n- Minimum 3 key insights with sources\n- Minimum 2 common mistakes\n- At least 1 expert perspective\n- All claims in citations must appear in the research above\n- If you can't find solid sources, acknowledge it in research_gaps\n- Never invent studies or statistics",
+              "role": "system"
+            },
+            {
+              "content": "=## RESEARCH BRIEF\n\n**NICHE:** {{ $json.niche }}\n\n**TARGET AUDIENCE:**\n{{ $json.the_who }}\n\n**THE WALL (specific barrier they've hit):**\n{{ $json.the_wall }}\n\n**CONTENT HOOK (the angle we're taking):**\n{{ $json.the_hook }}\n\n**CONTENT ANGLE:**\n{{ $json.content_angle }}\n\n---\n\n## VIDEO CONTEXT\n\nThis research supports content based on a video that's resonating with this audience:\n\n**Video Title:** {{ $json.video_title }}\n\n**Why it's working (top comments):**\n{{ $json.video_top_comments }}\n\n**Tags/Keywords:** {{ $json.video_tags }}\n\n---\n\n## LEAD MAGNET CONTEXT\n\nWe're offering: **{{ $json.lead_magnet_title }}** ({{ $json.lead_magnet_format }})\nHook: {{ $json.lead_magnet_hook }}\n\nThe research should support both the blog content AND this lead magnet's credibility.\n\n---\n\n## RESEARCH FOCUS\n\nDig deep into:\n1. Why THE WALL exists â€” the root cause, not just symptoms\n2. What the audience has already tried â€” and why it failed them\n3. What actually works â€” evidence-based solutions with sources\n4. The counterintuitive truth â€” what makes our hook compelling\n\nPrioritize specific, citable information over generic advice. The Copy Chief needs ammunition to write credible content, not fluff."
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        288
+      ],
+      "id": "740b0a65-54de-4037-91a4-e5e536318d4e",
+      "name": "Agent â€” Researcher",
+      "credentials": {
+        "perplexityApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "majorfunnels Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the raw data from the Perplexity (Agent â€” Researcher) node\n// We use $input.first() because n8n processes items in batches\nconst rawData = $input.first().json;\n\n// Safe extraction of content and citations (handles cases where Perplexity finds 0 sources)\nconst rawContent = rawData.choices && rawData.choices[0] && rawData.choices[0].message ? rawData.choices[0].message.content : \"No research content found.\";\nconst citations = rawData.citations || [];\n\n// 2. Initialize our output variables\nlet sourceMap = \"### BIBLIOGRAPHY & SOURCE MAP\\n\";\nlet richContent = rawContent;\n\n// 3. Loop through citations to build the Map and enhance the Notes\ncitations.forEach((url, index) => {\n  const citationNumber = index + 1;\n  let domain = \"External Source\";\n\n  // Try to extract a clean domain name (e.g., \"bloomberg.com\")\n  try {\n    const urlObj = new URL(url);\n    domain = urlObj.hostname.replace('www.', '');\n  } catch (e) {\n    // If URL is malformed, keep default\n  }\n\n  // A. Build the Source Map\n  // Format: [1]: https://url.com (Source: bloomberg.com)\n  sourceMap += `[${citationNumber}]: ${url} (Source: ${domain})\\n`;\n\n  // B. Enhance the Research Notes (Optional but recommended)\n  // This helps the AI attribute the source *inline* without constantly cross-referencing.\n  // Changes \"...inflation is up [1].\" to \"...inflation is up [1] (bloomberg.com).\"\n  \n  // Regex explains: Find [1] but NOT [10], [11] etc.\n  const markerRegex = new RegExp(`\\\\[${citationNumber}\\\\](?!\\\\d)`, 'g');\n  richContent = richContent.replace(markerRegex, `[${citationNumber}] (${domain})`);\n});\n\n// 4. Return the data structure exactly as the Prompt expects it\nreturn {\n  json: {\n    // Pass through original data just in case\n    ...rawData,\n    \n    // The specific fields requested in the Prompt\n    formatted_source_map: sourceMap,\n    rich_research_notes: richContent,\n    \n    // Helper: Total number of sources found\n    source_count: citations.length\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        288
+      ],
+      "id": "faeb9496-bb69-48aa-980a-dbcadcad482a",
+      "name": "Code â€” Parse Research"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[PROMPT REDACTED - 1080 chars]",
+        "options": {
+          "systemMessage": "[PROMPT REDACTED - 1349 chars]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -16,
+        448
+      ],
+      "id": "4fd5bd07-e185-47fd-8d68-c48e3b0cf21a",
+      "name": "Agent â€” Copy Chief (Short-Form Script)",
+      "notesInFlow": true,
+      "notes": "Generates platform-specific scripts for YT Shorts, IG Reels, and TikTok. JSON output."
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        656
+      ],
+      "id": "b10b2133-a95d-468f-be8d-d227ab62aee2",
+      "name": "Claude Sonnet_4",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[PROMPT REDACTED - 1357 chars]",
+        "options": {
+          "systemMessage": "[PROMPT REDACTED - 2530 chars]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        336,
+        48
+      ],
+      "id": "0f88c6a8-5ff3-4b7a-9275-1254214ba562",
+      "name": "Agent â€” Copy Chief (Blog)",
+      "notesInFlow": true,
+      "notes": "Generates a ~1,500 word SEO blog post tailored to the avatar's pain, with affiliate product integration."
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        752,
+        288
+      ],
+      "id": "e5a4c32e-23d4-4ca4-ae23-adce90baf951",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED6FC684",
+          "mode": "list",
+          "cachedResultName": "Copy",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDD3B365"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Copy ID": "={{ $('Loop â€” Item Processor').item.json.copy_id }}",
+            "Blog Post": "={{ $json.output }}",
+            "Video Script": "={{ $json.video_script }}",
+            "Voice Over Text": "={{ $json.voiceover_text }}",
+            "Research Source": "={{ $json.research_source }}",
+            "Traffic Leak": "={{ [$('Loop â€” Item Processor').item.json.traffic_leak_record_id] }}"
+          },
+          "matchingColumns": [
+            "Copy ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Copy ID",
+              "displayName": "Copy ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Blog Post",
+              "displayName": "Blog Post",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Video Script",
+              "displayName": "Video Script",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Voice Over Text",
+              "displayName": "Voice Over Text",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Research Source",
+              "displayName": "Research Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "IG Carousel",
+              "displayName": "IG Carousel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Pinterest Pin",
+              "displayName": "Pinterest Pin",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "X/Twitter Thread",
+              "displayName": "X/Twitter Thread",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Facebook Post",
+              "displayName": "Facebook Post",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1040,
+        288
+      ],
+      "id": "9fe73132-8ae2-4b22-98b0-72548162e97a",
+      "name": "System â€” Create Copy Record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1504,
+        272
+      ],
+      "id": "ae32bc7c-8398-4667-bbae-1d5de6bcba3b",
+      "name": "Schedule Trigger â€” Every 30 Minutes"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED82385D",
+          "mode": "list",
+          "cachedResultName": "Traffic Leaks",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDA446C2"
+        },
+        "filterByFormula": "{Status} = \"STRATEGY_COMPLETE\"",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1264,
+        272
+      ],
+      "id": "68ea2433-9052-4ac2-a8e1-2e5edaa931ed",
+      "name": "Airtable â€” Fetch Strategy Records for Copy",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Normalize Traffic Leak Data (v2.0 â€” Opportunity Hunter)\n// \n// Transforms Airtable response to standardized snake_case contract.\n// Includes new Profiler fields: the_wall, perplexity_prompts, \n// lead_magnet structure, content_angle, feature_ar.\n// ================================================================\n\nconst items = $input.all();\n\n// Helper: safely extract first element from linked record array\nfunction getLinkedId(field) {\n  if (Array.isArray(field) && field.length > 0) return field[0];\n  if (typeof field === 'string') return field;\n  return '';\n}\n\nreturn items.map(item => {\n  const fields = item.json.fields || item.json;\n  const recordId = item.json.id || fields.id || '';\n  \n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // PRIMARY IDENTIFIERS\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  const leakId = fields['Leak ID'] || '';\n  const videoId = getLinkedId(fields['Video']) || \n                  leakId.split('v=')[1]?.split('&')[0] || '';\n  const copyId = `${videoId || recordId}-COPY`;\n  const imageId = `${videoId || recordId}-IMAGES`;\n  \n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  // BUILD NORMALIZED OUTPUT\n  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n  return {\n    json: {\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // AIRTABLE RECORD IDs (for linking/updating)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      traffic_leak_record_id: recordId,\n      video_record_id: getLinkedId(fields['Video']),\n      channel_record_id: getLinkedId(fields['Channel']),\n      search_record_id: getLinkedId(fields['Searches']),\n      run_record_id: getLinkedId(fields['Run']),\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // PRIMARY KEYS\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      leak_id: leakId,\n      video_id: videoId,\n      copy_id: copyId,\n      image_id: imageId,\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // VIDEO CONTEXT\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      video_url: leakId,\n      video_title: fields['Video Title'] || '',\n      video_tags: fields['Viral Keywords'] || fields['Video Tags'] || '',\n      video_description: fields['Video Description'] || '',\n      video_top_comments: fields['Top Comments'] || '',\n      video_thumbnail_url: fields['Thumbnail URL'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // CHANNEL CONTEXT\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      channel_title: fields['Channel Title'] || '',\n      channel_subs: fields['Channel Subs'] || fields['Subs'] || 0,\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // RUN/NICHE DATA\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      niche: fields['Niche'] || '',\n      brand_outlet: fields['Brand Outlet'] || '',\n      search_axis: fields['Search Axis'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // PROFILER OUTPUT â€” CORE (NEW STRUCTURE)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      the_who: fields['The Who'] || '',\n      the_wall: fields['The Wall'] || '',\n      the_hook: fields['The Hook'] || '',\n      content_angle: fields['Content Angle'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // PROFILER OUTPUT â€” LEAD MAGNET (NEW STRUCTURE)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      lead_magnet_title: fields['Lead Magnet Title'] || '',\n      lead_magnet_hook: fields['Lead Magnet Hook'] || '',\n      lead_magnet_format: fields['Lead Magnet Format'] || '',\n      // Derived for backward compatibility\n      lead_magnet_idea: fields['Lead Magnet Idea'] || \n        [fields['Lead Magnet Title'], fields['Lead Magnet Hook']]\n          .filter(Boolean).join(': ') || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // PROFILER OUTPUT â€” PERPLEXITY PROMPTS (NEW)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      perplexity_prompt_1: fields['Perplexity Prompt 1'] || '',\n      perplexity_prompt_2: fields['Perplexity Prompt 2'] || '',\n      perplexity_prompt_3: fields['Perplexity Prompt 3"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        272
+      ],
+      "id": "d94f22a3-bb93-4ac4-9b50-0c716c5bae26",
+      "name": "Code â€” Normalize Traffic Leak Data"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED82385D",
+          "mode": "list",
+          "cachedResultName": "Traffic Leaks",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDA446C2"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Record ID": "={{ $('Loop â€” Item Processor').item.json.traffic_leak_record_id }}",
+            "Status": "COPY_COMPLETE",
+            "Copy Generated": "={{ [$json.id] }}"
+          },
+          "matchingColumns": [
+            "Record ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Leak ID",
+              "displayName": "Leak ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Niche",
+              "displayName": "Niche",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Video",
+              "displayName": "Video",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Channel",
+              "displayName": "Channel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Searches",
+              "displayName": "Searches",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Run",
+              "displayName": "Run",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Protocol Fit Score",
+              "displayName": "Protocol Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Kinetic Leak Score",
+              "displayName": "Kinetic Leak Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Days Old",
+              "displayName": "Days Old",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Tags Triggered",
+              "displayName": "Tags Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” AI",
+              "displayName": "Feature â€” AI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” V",
+              "displayName": "Feature â€” V",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” ER",
+              "displayName": "Feature â€” ER",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” PF",
+              "displayName": "Feature â€” PF",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” DS",
+              "displayName": "Feature â€” DS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” CI",
+              "displayName": "Feature â€” CI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Who",
+              "displayName": "The Who",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Pain",
+              "displayName": "The Pain",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Hook",
+              "displayName": "The Hook",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Protocol Name",
+              "displayName": "Protocol Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Lead Magnet Idea",
+              "displayName": "Lead Magnet Idea",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 1 â€” Hardware (Foundation)",
+              "displayName": "Phase 1 â€” Hardware (Foundation)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 2 â€” Software (Optimization)",
+              "displayName": "Phase 2 â€” Software (Optimization)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 3 â€” Maintenance (Insurance)",
+              "displayName": "Phase 3 â€” Maintenance (Insurance)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "STRATEGY_COMPLETE",
+                  "value": "STRATEGY_COMPLETE"
+                },
+                {
+                  "name": "COPY_COMPLETE",
+                  "value": "COPY_COMPLETE"
+                },
+                {
+                  "name": "SOCIAL_COMPLETE",
+                  "value": "SOCIAL_COMPLETE"
+                },
+                {
+                  "name": "IMAGES_COMPLETE",
+                  "value": "IMAGES_COMPLETE"
+                },
+                {
+                  "name": "VIDEO_COMPLETE",
+                  "value": "VIDEO_COMPLETE"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created At",
+              "displayName": "Created At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Last Modified",
+              "displayName": "Last Modified",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Copy Generated",
+              "displayName": "Copy Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Images Generated",
+              "displayName": "Images Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1248,
+        288
+      ],
+      "id": "8a90b737-e14d-4008-b5a6-28c4b0dfbeb5",
+      "name": "Update record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Loop â€” Item Processor": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Agent â€” Researcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet 4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent â€” Copy Chief (Blog)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Script JSON Cleaner": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Agent â€” Researcher": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Parse Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Parse Research": {
+      "main": [
+        [
+          {
+            "node": "Agent â€” Copy Chief (Blog)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent â€” Copy Chief (Short-Form Script)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent â€” Copy Chief (Short-Form Script)": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Script JSON Cleaner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet_4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent â€” Copy Chief (Short-Form Script)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent â€” Copy Chief (Blog)": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "System â€” Create Copy Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "System â€” Create Copy Record": {
+      "main": [
+        [
+          {
+            "node": "Update record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger â€” Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Fetch Strategy Records for Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Fetch Strategy Records for Copy": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Normalize Traffic Leak Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Normalize Traffic Leak Data": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Item Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update record": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Item Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "timezone": "America/Denver",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "Gqu8ge7IqmtyuAaG",
+    "timeSavedPerExecution": 240
+  },
+  "versionId": "1e656b4a-6d5c-4e83-93ac-1c6f4ccf5b16",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ca812eb3564963eff00a3a24177fd9ff074e03d85e8d765e49b67aad3f0657de"
+  },
+  "id": "vyXJYkNjc7athsJt",
+  "tags": [
+    {
+      "updatedAt": "2025-12-08T19:48:42.564Z",
+      "createdAt": "2025-12-08T19:48:42.564Z",
+      "id": "zU2QjEuyyFecYpw2",
+      "name": "AI Agency"
+    }
+  ],
+  "_sanitized": {
+    "timestamp": "2026-01-07T21:45:28.248768",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": true
+  }
+}

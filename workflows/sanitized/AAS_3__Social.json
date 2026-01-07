@@ -1,0 +1,861 @@
+{
+  "name": "AAS 3: Social",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -384,
+        320
+      ],
+      "id": "1db16360-4fc2-48a6-b151-e151241b3f4f",
+      "name": "Loop â€” Social Item Processor"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[PROMPT REDACTED - 1183 chars]",
+        "options": {
+          "systemMessage": "[PROMPT REDACTED - 420 chars]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "97bdea3f-c416-4590-9c8b-6efcca0c5aaf",
+      "name": "Agent â€” Social Strategist",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Clean Social JSON (v3.0 Simplified)\n// \n// Parses AI agent output and formats for Airtable upsert.\n// Uses standardized snake_case keys.\n// ================================================================\n\n// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n// HELPERS\n// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\nfunction extractJson(raw) {\n  // Remove markdown fences\n  raw = raw.replace(/```json\\s*/gi, '').replace(/```\\s*/gi, '').trim();\n  \n  // Find JSON boundaries\n  const first = raw.indexOf('{');\n  const last = raw.lastIndexOf('}');\n  \n  if (first === -1 || last === -1 || last <= first) {\n    return null;\n  }\n  \n  return raw.substring(first, last + 1);\n}\n\nfunction formatCarousel(data) {\n  if (!data) return 'No carousel content generated';\n  \n  // Handle array format\n  if (Array.isArray(data)) {\n    return data.map((slide, i) => {\n      const text = slide.slide_text || slide.text || slide.content || '';\n      const visual = slide.visual_description || slide.visual || '';\n      let result = `**Slide ${i + 1}**\\n${text}`;\n      if (visual) result += `\\n*(Visual: ${visual})*`;\n      return result;\n    }).join('\\n\\n---\\n\\n');\n  }\n  \n  // Handle object format { slide_1: {...}, slide_2: {...} }\n  if (typeof data === 'object') {\n    const keys = Object.keys(data).sort((a, b) => {\n      const na = parseInt((a.match(/\\d+/) || [0])[0], 10);\n      const nb = parseInt((b.match(/\\d+/) || [0])[0], 10);\n      return na - nb;\n    });\n    \n    return keys.map((k, idx) => {\n      const slide = data[k] || {};\n      const text = slide.slide_text || slide.text || slide.content || '';\n      const visual = slide.visual_description || slide.visual || '';\n      let result = `**Slide ${idx + 1}**\\n${text}`;\n      if (visual) result += `\\n*(Visual: ${visual})*`;\n      return result;\n    }).join('\\n\\n---\\n\\n');\n  }\n  \n  return typeof data === 'string' ? data : JSON.stringify(data, null, 2);\n}\n\nfunction formatThread(data) {\n  if (!data) return 'No thread content generated';\n  \n  if (Array.isArray(data)) {\n    return data.map((tweet, i) => {\n      let text = tweet;\n      if (typeof tweet === 'object') {\n        text = tweet.tweet_text || tweet.text || tweet.content || JSON.stringify(tweet);\n      }\n      return `**Tweet ${i + 1}**\\n${text}`;\n    }).join('\\n\\n---\\n\\n');\n  }\n  \n  return typeof data === 'string' ? data : JSON.stringify(data, null, 2);\n}\n\nfunction formatPinterest(data) {\n  if (!data) return 'No Pinterest content generated';\n  \n  if (typeof data === 'string') return data;\n  \n  const title = data.title || 'Title needed';\n  const overlay = data.text_overlay || data.text_overlay_idea || 'Overlay needed';\n  const desc = data.description || 'Description needed';\n  \n  return `TITLE: ${title}\\n\\nOVERLAY: ${overlay}\\n\\nDESCRIPTION: ${desc}`;\n}\n\nfunction formatFacebook(data) {\n  if (!data) return 'No Facebook post generated';\n  \n  if (typeof data === 'string') return data;\n  \n  return data.post_text || data.content || JSON.stringify(data, null, 2);\n}\n\n// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n// MAIN LOGIC\n// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\nconst agentOutput = $input.first().json;\nconst loopItem = $('Loop â€” Social Item Processor').item.json;\n\n// Extract raw text from agent output\nlet raw = agentOutput.text || agentOutput.output || agentOutput.response || '';\nif (!raw && agentOutput.message?.content) raw = agentOutput.message.content;\nif (!raw) raw = JSON.stringify(agentOutput);\n\n// Parse JSON\nconst jsonString = extractJson(raw);\nif (!jsonString) {\n  return [{\n    json: {\n      _error: 'No JSON found in agent response',\n      _raw: raw.substring(0, 500),\n      copy_id: loopItem.copy_id,\n      traffic_leak_record_id: loopItem.traffic_leak_record_id\n    }\n  }];\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonString);\n} catch (e) {\n  return [{\n    json: {\n      _error: `JSON parse failed: ${e.message}`,\n      _raw: jsonString.substring(0, 500),\n      copy_id: loopItem.copy_id,\n      traffic_leak_record_id: loopItem.traffic_leak_record_id\n    }\n  }];\n}\n\n// Format content\nconst igCarouselContent = formatCarousel(parsed.ig_carousel);\nconst igCaption = parsed.ig_carousel_caption || 'Caption needed';\nconst igCarousel = `${igCarouselContent}\\n\\n---CAPTION---\\n\\n${igCaption}`;\n\nconst pinterestPin = formatPinterest(parsed.pinterest_pin);\nconst xThread = formatThread(parsed.x_thread);\nconst fbPost = formatFacebook(parsed.fb_post);\n\n// Return standardized snake_case output\nreturn [{\n  json: {\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // IDs (passed through from loop for Airtable operations)\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    copy_id: loopItem.copy_id,\n    copy_record_id: loopItem.copy_record_id,\n    traffic_leak_record_id: loopItem.traffic_leak_record_id,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // GENERATED SOCIAL CONTENT (snake_case keys)\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    ig_carousel: igCarousel,\n    pinterest_pin: pinterestPin,\n    x_twitter_thread: xThread,\n    facebook_post: fbPost,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // STAGE TRACKING\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    _stage: 'SOCIAL_COMPLETE'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        96
+      ],
+      "id": "38f02c0a-1bc3-4426-97ab-ccad8d98db44",
+      "name": "Code â€” Clean Social JSON"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        224
+      ],
+      "id": "94459424-2254-49ea-9e87-3248ded620dc",
+      "name": "Claude Sonnet 4 (Social)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED6FC684",
+          "mode": "list",
+          "cachedResultName": "Copy",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDD3B365"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "IG Carousel": "={{ $json.ig_carousel }}",
+            "Pinterest Pin": "={{ $json.pinterest_pin }}",
+            "X/Twitter Thread": "={{ $json.x_twitter_thread }}",
+            "Facebook Post": "={{ $json.facebook_post }}",
+            "Copy ID": "={{ $json.copy_id }}"
+          },
+          "matchingColumns": [
+            "Copy ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Copy ID",
+              "displayName": "Copy ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Blog Post",
+              "displayName": "Blog Post",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Video Script",
+              "displayName": "Video Script",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Voice Over Text",
+              "displayName": "Voice Over Text",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Research Source",
+              "displayName": "Research Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "IG Carousel",
+              "displayName": "IG Carousel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Pinterest Pin",
+              "displayName": "Pinterest Pin",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "X/Twitter Thread",
+              "displayName": "X/Twitter Thread",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Facebook Post",
+              "displayName": "Facebook Post",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        224
+      ],
+      "id": "2c609296-71d9-4176-93ea-f194708c50fe",
+      "name": "System â€” Save Social Content",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED6FC684",
+          "mode": "list",
+          "cachedResultName": "Copy",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDD3B365"
+        },
+        "filterByFormula": "AND({Blog Post} != \"\", {IG Carousel} = \"\")",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -896,
+        320
+      ],
+      "id": "5e33edd1-8c0e-4573-937a-c073b1d64570",
+      "name": "Airtable â€” Fetch Copy Records for Social",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1104,
+        320
+      ],
+      "id": "d38378a5-3ec0-4fbf-8b1b-efa99460e2f5",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Normalize Copy Data\n// \n// Transforms Copy table Airtable response to snake_case contract.\n// Extracts Traffic Leak record ID for status update at end.\n// ================================================================\n\nconst items = $input.all();\nconst output = [];\n\nfor (const item of items) {\n  // Airtable returns { id, createdTime, fields: {...} }\n  const fields = item.json.fields || item.json;\n  const copyRecordId = item.json.id || '';\n  \n  // Get Blog Post - skip if too short\n  const blogPost = fields['Blog Post'] || '';\n  if (blogPost.length < 200) {\n    continue;\n  }\n  \n  // Extract Traffic Leak record ID from linked field (it's an array)\n  const trafficLeakLinks = fields['Traffic Leak'] || [];\n  const trafficLeakRecordId = Array.isArray(trafficLeakLinks) \n    ? trafficLeakLinks[0] \n    : (typeof trafficLeakLinks === 'string' ? trafficLeakLinks : '');\n  \n  output.push({\n    json: {\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // RECORD IDs (for Airtable operations)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      copy_record_id: copyRecordId,\n      traffic_leak_record_id: trafficLeakRecordId,\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // PRIMARY KEY\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      copy_id: fields['Copy ID'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // COPY CONTENT (source for social generation)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      blog_post: blogPost,\n      video_script: fields['Video Script'] || '',\n      voiceover_text: fields['Voice Over Text'] || '',\n      research_source: fields['Research Source'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // EXISTING SOCIAL CONTENT (should be empty for fetched items)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      ig_carousel: fields['IG Carousel'] || '',\n      pinterest_pin: fields['Pinterest Pin'] || '',\n      x_twitter_thread: fields['X/Twitter Thread'] || '',\n      facebook_post: fields['Facebook Post'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // STAGE TRACKING\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      _stage: 'SOCIAL_IN_PROGRESS',\n      _source: 'AAS3_NORMALIZED'\n    }\n  });\n}\n\n// Handle empty output\nif (output.length === 0) {\n  return [{\n    json: {\n      _empty: true,\n      _reason: 'No Copy records need social content',\n      _hint: 'Records must have Blog Post (200+ chars) and empty IG Carousel'\n    }\n  }];\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        320
+      ],
+      "id": "00bf64a3-943b-4d8c-ac21-7c45ec332249",
+      "name": "Code â€” Normalize Copy Data"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED82385D",
+          "mode": "list",
+          "cachedResultName": "Traffic Leaks",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDA446C2"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Record ID": "={{ $json.traffic_leak_record_id }}",
+            "Status": "SOCIAL_COMPLETE"
+          },
+          "matchingColumns": [
+            "Record ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Leak ID",
+              "displayName": "Leak ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Niche",
+              "displayName": "Niche",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Video",
+              "displayName": "Video",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Channel",
+              "displayName": "Channel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Searches",
+              "displayName": "Searches",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Run",
+              "displayName": "Run",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Protocol Fit Score",
+              "displayName": "Protocol Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Kinetic Leak Score",
+              "displayName": "Kinetic Leak Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Days Old",
+              "displayName": "Days Old",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Tags Triggered",
+              "displayName": "Tags Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” AI",
+              "displayName": "Feature â€” AI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” V",
+              "displayName": "Feature â€” V",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” ER",
+              "displayName": "Feature â€” ER",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” PF",
+              "displayName": "Feature â€” PF",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” DS",
+              "displayName": "Feature â€” DS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” CI",
+              "displayName": "Feature â€” CI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Who",
+              "displayName": "The Who",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Pain",
+              "displayName": "The Pain",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Hook",
+              "displayName": "The Hook",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Protocol Name",
+              "displayName": "Protocol Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Lead Magnet Idea",
+              "displayName": "Lead Magnet Idea",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 1 â€” Hardware (Foundation)",
+              "displayName": "Phase 1 â€” Hardware (Foundation)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 2 â€” Software (Optimization)",
+              "displayName": "Phase 2 â€” Software (Optimization)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 3 â€” Maintenance (Insurance)",
+              "displayName": "Phase 3 â€” Maintenance (Insurance)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "STRATEGY_COMPLETE",
+                  "value": "STRATEGY_COMPLETE"
+                },
+                {
+                  "name": "COPY_COMPLETE",
+                  "value": "COPY_COMPLETE"
+                },
+                {
+                  "name": "SOCIAL_COMPLETE",
+                  "value": "SOCIAL_COMPLETE"
+                },
+                {
+                  "name": "IMAGES_COMPLETE",
+                  "value": "IMAGES_COMPLETE"
+                },
+                {
+                  "name": "VIDEO_COMPLETE",
+                  "value": "VIDEO_COMPLETE"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created At",
+              "displayName": "Created At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Last Modified",
+              "displayName": "Last Modified",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Copy Generated",
+              "displayName": "Copy Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Images Generated",
+              "displayName": "Images Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        816,
+        224
+      ],
+      "id": "562b112d-1072-4a84-926e-ab0d3760cae2",
+      "name": "Airtable â€” Update Traffic Leak Status",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Loop â€” Social Item Processor": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Agent â€” Social Strategist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent â€” Social Strategist": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Clean Social JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Clean Social JSON": {
+      "main": [
+        [
+          {
+            "node": "System â€” Save Social Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet 4 (Social)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent â€” Social Strategist",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "System â€” Save Social Content": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Update Traffic Leak Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Fetch Copy Records for Social": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Normalize Copy Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Normalize Copy Data": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Social Item Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Fetch Copy Records for Social",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Update Traffic Leak Status": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Social Item Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "timezone": "America/Denver",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "Gqu8ge7IqmtyuAaG",
+    "timeSavedPerExecution": 240
+  },
+  "versionId": "859d3196-e9b6-4028-8a8c-0d525180b7bb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ca812eb3564963eff00a3a24177fd9ff074e03d85e8d765e49b67aad3f0657de"
+  },
+  "id": "tRDd6MmLd0fj1Eph",
+  "tags": [
+    {
+      "updatedAt": "2025-12-08T19:48:42.564Z",
+      "createdAt": "2025-12-08T19:48:42.564Z",
+      "id": "zU2QjEuyyFecYpw2",
+      "name": "AI Agency"
+    }
+  ],
+  "_sanitized": {
+    "timestamp": "2026-01-07T21:45:28.252590",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": true
+  }
+}

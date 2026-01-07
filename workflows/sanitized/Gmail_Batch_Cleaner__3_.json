@@ -1,0 +1,717 @@
+{
+  "name": "Gmail Batch Cleaner",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10,
+        "filters": {
+          "labelIds": [
+            "INBOX",
+            "Label_3581452889875117701",
+            "Label_6235469656437353184",
+            "Label_1983936588669726867",
+            "Label_4645776891838155969",
+            "Label_2382957206573244637",
+            "Label_2622007197506570114",
+            "Label_3943274808629433577",
+            "Label_8524609666522110967",
+            "Label_5196848672254763506"
+          ],
+          "q": "older_than:6m"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        720
+      ],
+      "id": "ba189676-58bc-4447-a550-5e35b094feb7",
+      "name": "Get many messages",
+      "webhookId": "ca4e1e64-f31c-420c-aad7-9982b1c645cf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.Subject }} - {{ $json.snippet }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "AI-Agent/Personal",
+              "description": "Emails from friends, family, and direct personal acquaintances. High-priority correspondence including medical appointment reminders, personal calendar invitations, event updates, school updates, teacher communications, family logistics, preschool and elementary school updates, and short conversational replies (e.g., \"Thanks\", \"Got it\")."
+            },
+            {
+              "category": "AI-Agent/Work",
+              "description": "Professional inquiries, business correspondence, project updates, domain registration and hosting notifications, property management notifications, career-related emails, notifications regarding properties that I manage or rent out, meeting invitations, scheduling confirmations, calendar requests, and short business acknowledgments."
+            },
+            {
+              "category": "AI-Agent/Other",
+              "description": "Anything that does not fit clearly into the other categories. Do not use this for short replies or conversational threads."
+            },
+            {
+              "category": "AI-Agent/Finance",
+              "description": "Transactional emails: Receipts, invoices, billing statements, bank notifications, tax documents, purchase confirmations, and personal travel itineraries or vacation bookings."
+            },
+            {
+              "category": "AI-Agent/Newsletters",
+              "description": "High-value subscriptions, weekly digests, and industry news that I specifically signed up for."
+            },
+            {
+              "category": "AI-Agent/Social",
+              "description": "Notifications from social media platforms (LinkedIn, Facebook, Instagram, Twitter/X), YouTube comments, and forum alerts."
+            },
+            {
+              "category": "AI-Agent/Promotions",
+              "description": "Marketing blasts, \"special offers,\" sales announcements, discount codes, legal updates, privacy policy changes, terms of service notifications, booking or rental review requests, and unsolicited product pitches."
+            },
+            {
+              "category": "AI-Agent/Spam",
+              "description": "Obvious junk, scams, phishing attempts, or completely irrelevant cold outreach."
+            }
+          ]
+        },
+        "options": {
+          "systemPromptTemplate": "You are a highly accurate email sorting assistant.\n1. Read the input text carefully.\n2. Compare it against the provided category descriptions.\n3. If an email seems to fit two categories (e.g., Work and Finance), prioritize the context of the sender.\n4. If the email is a short reply (e.g., \"Thanks\", \"Got it\"), strictly classify it as \"Personal\" or \"Work\" based on the sender, NEVER as \"Other\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1,
+      "position": [
+        736,
+        624
+      ],
+      "id": "e7237a03-993b-4728-9214-cdfa3a2641a8",
+      "name": "Text Classifier",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        736,
+        912
+      ],
+      "id": "88edf7e4-9624-4cc8-9023-9f013257c51b",
+      "name": "Google Gemini Chat Model1 2.0-flash",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Google Gemini account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_2382957206573244637"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        144
+      ],
+      "id": "938e2c2b-149e-4521-bed3-ee3b4a440707",
+      "name": "Gmail - Label - AI-Agent/Personal",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_5196848672254763506"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        320
+      ],
+      "id": "e52019e0-eed4-496b-879e-e0e3d52f70f0",
+      "name": "Gmail - Label - AI-Agent/Work",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_8524609666522110967"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        1376
+      ],
+      "id": "5799a962-26b0-4b2b-8897-1370346e0d28",
+      "name": "Gmail - Label - AI-Agent/Spam",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_6235469656437353184"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        672
+      ],
+      "id": "4575eb8a-7743-48c8-b3bf-d232215a2155",
+      "name": "Gmail - Label - AI-Agent/Finance",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_4645776891838155969"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        496
+      ],
+      "id": "23d2d12b-69cb-489e-a1ca-bc6de342e9e2",
+      "name": "Gmail - Label - AI-Agent/Other",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_1983936588669726867"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        848
+      ],
+      "id": "dd5df33e-222e-4fc9-9261-9ae404d59f26",
+      "name": "Gmail - Label - AI-Agent/Newsletters",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_3943274808629433577"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        1024
+      ],
+      "id": "9d40416f-961d-4eb5-8d75-7d61aa72e73c",
+      "name": "Gmail - Label - AI-Agent/Social",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_2622007197506570114"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        1200
+      ],
+      "id": "4803b647-a3a7-49be-bd14-5ccf7c4edc8d",
+      "name": "Gmail - Label - AI-Agent/Promotions",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "INBOX"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1616,
+        496
+      ],
+      "id": "11b50efa-78f7-403f-be45-4b0b8f49ddff",
+      "name": "Gmail - Remove Label - The Archiver",
+      "webhookId": "f07731e9-f731-49a4-addb-753c8ef4b3a4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "TRASH"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1392,
+        1200
+      ],
+      "id": "38288871-a0a0-4118-ae15-0a7fc5d2a19d",
+      "name": "Gmail - Label - TRASH - The Destroyer",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $json.id }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1392,
+        496
+      ],
+      "id": "7396bb0f-3e03-440e-9eef-3926290f2ee1",
+      "name": "Mark a message as read",
+      "webhookId": "ca61cba5-9189-4fab-adae-b32463f5afcc",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        720
+      ],
+      "id": "78818232-c91a-49ef-808b-ea0b9173a2f0",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        336,
+        720
+      ],
+      "id": "90ea52e0-b41d-4ee2-8ff0-7579946553b8",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        816
+      ],
+      "id": "ccb428ea-2d42-494e-bff9-5eece17c92e2",
+      "name": "Wait",
+      "webhookId": "9b04e058-3def-4f32-81d1-0af46865405c"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        528,
+        640
+      ],
+      "id": "74589274-e9e4-4506-834a-f9f53b1445a1",
+      "name": "No Operation, do nothing"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Text Classifier": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Personal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Work",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Other",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Finance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Newsletters",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Social",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Promotions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Spam",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1 2.0-flash": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Text Classifier",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Spam": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - TRASH - The Destroyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Finance": {
+      "main": [
+        [
+          {
+            "node": "Mark a message as read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Newsletters": {
+      "main": [
+        [
+          {
+            "node": "Mark a message as read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Social": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - TRASH - The Destroyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Promotions": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - TRASH - The Destroyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Other": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Work": {
+      "main": [
+        [
+          {
+            "node": "Mark a message as read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Personal": {
+      "main": [
+        [
+          {
+            "node": "Mark a message as read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark a message as read": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Remove Label - The Archiver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Text Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Remove Label - The Archiver": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - TRASH - The Destroyer": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Denver",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "Gqu8ge7IqmtyuAaG"
+  },
+  "versionId": "15684d78-180a-4465-a52d-9b35ad835136",
+  "meta": {
+    "instanceId": "ca812eb3564963eff00a3a24177fd9ff074e03d85e8d765e49b67aad3f0657de"
+  },
+  "id": "lRBKNwzKpuVliWdu",
+  "tags": [
+    {
+      "updatedAt": "2025-12-09T15:23:53.562Z",
+      "createdAt": "2025-12-09T15:23:53.562Z",
+      "id": "TRwjJ9Srurp5GFGq",
+      "name": "Productivity"
+    }
+  ],
+  "_sanitized": {
+    "timestamp": "2026-01-07T21:45:28.261064",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": true
+  }
+}

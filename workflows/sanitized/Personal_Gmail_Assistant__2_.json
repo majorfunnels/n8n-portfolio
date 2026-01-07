@@ -1,0 +1,772 @@
+{
+  "name": "Personal Gmail Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "filters": {
+          "labelIds": [
+            "INBOX",
+            "UNREAD"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1104,
+        384
+      ],
+      "id": "e9789e21-982e-4aaf-9f7c-e3fac3e7855f",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.text }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "AI-Agent/Personal",
+              "description": "Emails from friends, family, and direct personal acquaintances. High-priority correspondence including medical appointment reminders, personal calendar invitations, event updates, school updates, teacher communications, family logistics, and short conversational replies (e.g., \"Thanks\", \"Got it\")."
+            },
+            {
+              "category": "AI-Agent/Work",
+              "description": "Professional inquiries, business correspondence, project updates, domain registration and hosting notifications, property management notifications, career-related emails, notifications regarding properties that I manage or rent out, meeting invitations, scheduling confirmations, calendar requests, and short business acknowledgments."
+            },
+            {
+              "category": "AI-Agent/Other",
+              "description": "Anything that does not fit clearly into the other categories. Do not use this for short replies or conversational threads."
+            },
+            {
+              "category": "AI-Agent/Finance",
+              "description": "Transactional emails: Receipts, invoices, billing statements, bank notifications, tax documents, purchase confirmations, and personal travel itineraries or vacation bookings."
+            },
+            {
+              "category": "AI-Agent/Newsletters",
+              "description": "High-value subscriptions, weekly digests, and industry news that I specifically signed up for."
+            },
+            {
+              "category": "AI-Agent/Social",
+              "description": "Notifications from social media platforms (LinkedIn, Facebook, Instagram, Twitter/X), YouTube comments, and forum alerts."
+            },
+            {
+              "category": "AI-Agent/Promotions",
+              "description": "Marketing blasts, \"special offers,\" sales announcements, discount codes, legal updates, privacy policy changes, terms of service notifications, booking or rental review requests, and unsolicited product pitches."
+            },
+            {
+              "category": "AI-Agent/Spam",
+              "description": "Obvious junk, scams, phishing attempts, or completely irrelevant cold outreach."
+            }
+          ]
+        },
+        "options": {
+          "systemPromptTemplate": "You are a highly accurate email sorting assistant.\n1. Read the input text carefully.\n2. Compare it against the provided category descriptions.\n3. If an email seems to fit two categories (e.g., Work and Finance), prioritize the context of the sender.\n4. If the email is a short reply (e.g., \"Thanks\", \"Got it\"), strictly classify it as \"Personal\" or \"Work\" based on the sender, NEVER as \"Other\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        288
+      ],
+      "id": "7e1e2936-9684-4f79-b22b-8be5524bd49d",
+      "name": "Text Classifier",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        576
+      ],
+      "id": "c18bc504-6295-4d87-8040-194997382783",
+      "name": "Google Gemini Chat Model1 2.0-flash",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Google Gemini account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        64,
+        80
+      ],
+      "id": "9b0df820-1524-4bca-be40-42f5fc142add",
+      "name": "Google Gemini Chat Model2 2.0 Flash",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Google Gemini account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_2382957206573244637"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        -192
+      ],
+      "id": "a221b098-99ab-4858-8fa4-eb8e35bc2633",
+      "name": "Gmail - Label - AI-Agent/Personal",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_5196848672254763506"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        -16
+      ],
+      "id": "e585445f-07ce-410a-beef-10cd50166f4f",
+      "name": "Gmail - Label - AI-Agent/Work",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_8524609666522110967"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        1040
+      ],
+      "id": "95531f1f-1731-41f2-8a48-9e3bad746569",
+      "name": "Gmail - Label - AI-Agent/Spam",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_6235469656437353184"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        336
+      ],
+      "id": "c366851b-d77c-426a-8358-45c964a3b7a9",
+      "name": "Gmail - Label - AI-Agent/Finance",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_4645776891838155969"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        160
+      ],
+      "id": "3aa404dd-2729-48b8-8579-73db472fec89",
+      "name": "Gmail - Label - AI-Agent/Other",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_1983936588669726867"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        512
+      ],
+      "id": "e3a436fb-f59c-4430-bf40-34ecc0d909b3",
+      "name": "Gmail - Label - AI-Agent/Newsletters",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_3943274808629433577"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        688
+      ],
+      "id": "4941fc2b-2fd8-4657-bb38-9e67d98d24d4",
+      "name": "Gmail - Label - AI-Agent/Social",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_2622007197506570114"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        864
+      ],
+      "id": "bed6c0c0-4752-47ef-940a-b12d2ede08b9",
+      "name": "Gmail - Label - AI-Agent/Promotions",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Code in JavaScript').item.json.text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are my personal email assistant. Your goal is to draft a polite and concise reply to the incoming email.\n\nCRITICAL INSTRUCTION - READ FIRST:\nBefore generating a draft, analyze the incoming email content below.\n1. If the email is a short conversational reply (e.g., \"Thanks\", \"Received\", \"Ok\", \"Got it\", \"Will do\").\n2. If the email is a transactional notification (Receipt, 2FA code, Shipping update) that requires no response.\n3. If the email is a newsletter or spam.\nThen OUTPUT ONLY the text: \"NO_DRAFT_NEEDED\"\nDo not generate a subject line, body, or signature. Stop there.\n\nIf a genuine reply is required, follow these DRAFTING RULES:\n- If the email is personal, match the tone of the sender (casual/warm).\n- If the email is professional, keep it formal but friendly.\n- Be concise. Do not fluff.\n- Sign off with \"Best, [Your Name]\"\n\nHere is the email to reply to:\nSubject: {{ $('Gmail Trigger').item.json.Subject }}\nBody: {{ $('Gmail Trigger').item.json.snippet }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        64,
+        -16
+      ],
+      "id": "50a45d93-7864-43c8-9403-f665c0c95e11",
+      "name": "Basic LLM Chain - The Writer"
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "INBOX",
+          "UNREAD"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        512
+      ],
+      "id": "2b7beef5-e6cc-47f9-b4f2-62d96ea7109c",
+      "name": "Gmail - Remove Label - The Archiver",
+      "webhookId": "f07731e9-f731-49a4-addb-753c8ef4b3a4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "TRASH"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        864
+      ],
+      "id": "efaee58b-dfe3-4f08-a6cc-128a8c280357",
+      "name": "Gmail - Label - TRASH - The Destroyer",
+      "webhookId": "39a21730-27a1-4344-bf0c-0bb92dd891fa",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Re: {{ $('Gmail Trigger').item.json.Subject }}",
+        "message": "={{ $json.text }}",
+        "options": {
+          "threadId": "={{ $('Gmail Trigger').item.json.threadId }}"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        592,
+        -96
+      ],
+      "id": "aab729d6-9632-48a9-8857-948be624daac",
+      "name": "Gmail - Write Draft",
+      "webhookId": "7b3d3c23-2725-4614-8c08-80ec52c1d7a7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a5c7b24d-3fe9-46ca-9637-795836dba8c4",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "NO_DRAFT_NEEDED",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        368,
+        -16
+      ],
+      "id": "6a41246e-cfd0-4cfb-baec-c9df95569843",
+      "name": "Check IF Draft Needed"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        592,
+        64
+      ],
+      "id": "bfdbaffb-719d-48d7-a13c-c537617d12de",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "url": "=https://gmail.googleapis.com/gmail/v1/users/me/messages/{{ $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "format",
+              "value": "full"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -928,
+        384
+      ],
+      "id": "ae7ed472-b802-4147-9a28-e87fda45e68d",
+      "name": "HTTP Request",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over items from the HTTP Request\nfor (const item of $input.all()) {\n  const payload = item.json.payload;\n  let bodyData = '';\n  let htmlData = '';\n\n  // Helper function to decode Google's Base64URL format\n  function decode(str) {\n    if (!str) return '';\n    // Replace non-url compatible chars to make them readable\n    const base64 = str.replace(/-/g, '+').replace(/_/g, '/');\n    // Decode from Base64 to UTF-8 text\n    return Buffer.from(base64, 'base64').toString('utf-8');\n  }\n\n  // Case 1: Complex Email (Multipart - has attachments or HTML+Text)\n  if (payload.parts) {\n    // Find Plain Text version\n    const textPart = payload.parts.find(p => p.mimeType === 'text/plain');\n    if (textPart && textPart.body && textPart.body.data) {\n      bodyData = decode(textPart.body.data);\n    }\n    \n    // Find HTML version (Fallback if text is missing)\n    const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');\n    if (htmlPart && htmlPart.body && htmlPart.body.data) {\n      htmlData = decode(htmlPart.body.data);\n    }\n  } \n  // Case 2: Simple Email (Single body)\n  else if (payload.body && payload.body.data) {\n    bodyData = decode(payload.body.data);\n  }\n\n  // Save the clean text to the item so the AI can use it\n  item.json.text = bodyData;\n  item.json.html = htmlData;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        384
+      ],
+      "id": "dde8ddc9-3aad-40bd-aa98-261eecd33289",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Classifier": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Personal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Work",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Other",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Finance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Newsletters",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Social",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Promotions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Label - AI-Agent/Spam",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1 2.0-flash": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Text Classifier",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2 2.0 Flash": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain - The Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Personal": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain - The Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Work": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain - The Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Other": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain - The Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain - The Writer": {
+      "main": [
+        [
+          {
+            "node": "Check IF Draft Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Finance": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Remove Label - The Archiver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Newsletters": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Remove Label - The Archiver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Social": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - TRASH - The Destroyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Promotions": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - TRASH - The Destroyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Label - AI-Agent/Spam": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Label - TRASH - The Destroyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check IF Draft Needed": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Write Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Text Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Denver",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "Gqu8ge7IqmtyuAaG"
+  },
+  "versionId": "f98481f4-1de5-4293-8fbb-ee2de64d8c74",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ca812eb3564963eff00a3a24177fd9ff074e03d85e8d765e49b67aad3f0657de"
+  },
+  "id": "FJFKRO4tQVuoSNRc",
+  "tags": [
+    {
+      "updatedAt": "2025-12-09T15:23:53.562Z",
+      "createdAt": "2025-12-09T15:23:53.562Z",
+      "id": "TRwjJ9Srurp5GFGq",
+      "name": "Productivity"
+    }
+  ],
+  "_sanitized": {
+    "timestamp": "2026-01-07T21:45:28.263593",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": true
+  }
+}

@@ -1,0 +1,1491 @@
+{
+  "name": "AAS 4: Images",
+  "nodes": [
+    {
+      "parameters": {
+        "batchSize": "=1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1376,
+        192
+      ],
+      "id": "ecb0715d-967c-4c48-aed4-9f1246baa921",
+      "name": "Loop â€” Project Processor"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "[PROMPT REDACTED - 2474 chars]",
+        "options": {
+          "systemMessage": "[PROMPT REDACTED - 2018 chars]"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1152,
+        192
+      ],
+      "id": "fa48cdbb-208c-40d9-90d4-fb1dcb491920",
+      "name": "Agent â€” The Art Director",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Explode Asset List (v3.1 Standardized)\n// \n// Parses Art Director output into individual asset items\n// Uses snake_case keys throughout\n// ================================================================\n\nconst agentRaw =\n  $('Agent â€” The Art Director').first().json.output ||\n  $('Agent â€” The Art Director').first().json.text ||\n  '';\n\n// Clean and parse JSON\nconst cleanJson = String(agentRaw)\n  .replace(/```json/gi, '')\n  .replace(/```/g, '')\n  .trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(cleanJson);\n} catch (e) {\n  throw new Error(`Failed to parse Art Director JSON: ${e.message}\\n\\nRaw output: ${cleanJson.substring(0, 500)}`);\n}\n\nif (!parsed.assets || !Array.isArray(parsed.assets)) {\n  throw new Error('Art Director output missing \"assets\" array');\n}\n\n// Get parent context from the project processor loop (already normalized)\nconst loopItem = $('Loop â€” Project Processor').first().json;\n\n// Extract context using snake_case keys (from normalized data)\nconst copyId = loopItem.copy_id || \"UNKNOWN\";\nconst imageId = loopItem.image_id || `${loopItem.traffic_leak_record_id}-IMAGES`;\nconst folderId = loopItem.drive_folder_id || null;\nconst folderUrl = loopItem.drive_folder_url || null;\nconst trafficLeakRecordId = loopItem.traffic_leak_record_id || null;\nconst parentTitle = loopItem.video_title || \"Asset\";\nconst visualTheme = parsed.visual_theme || \"\";\n\n// Create a sanitized title prefix for filenames (max 20 chars)\nconst titlePrefix = parentTitle\n  .substring(0, 20)\n  .replace(/[^a-z0-9]/gi, '_')\n  .replace(/_+/g, '_')\n  .replace(/^_|_$/g, '');\n\n// Return one item per asset for the generation loop\nreturn parsed.assets.map((asset, index) => ({\n  json: {\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // ASSET-SPECIFIC FIELDS (from Art Director)\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    asset_type: asset.type || `Asset_${index + 1}`,\n    model_id: asset.model_id || \"black-forest-labs/flux.2-pro\",\n    prompt: asset.prompt || \"\",\n    aspect_ratio: asset.aspect_ratio || \"16:9\",\n    filename_suffix: asset.filename_suffix || `_asset_${String(index + 1).padStart(2, '0')}`,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // COMPUTED FIELDS\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    drive_filename: `${titlePrefix}${asset.filename_suffix || `_asset_${String(index + 1).padStart(2, '0')}`}.png`,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // PARENT CONTEXT (for Drive save and tracking)\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    parent_title: parentTitle,\n    title_prefix: titlePrefix,\n    copy_id: copyId,\n    image_id: imageId,\n    drive_folder_id: folderId,\n    drive_folder_url: folderUrl,\n    traffic_leak_record_id: trafficLeakRecordId,\n    visual_theme: visualTheme,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // ASSET COUNTERS\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    asset_index: index + 1,\n    total_assets: parsed.assets.length\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        192
+      ],
+      "id": "df364ea1-88cb-47ee-9a9a-3719eba662b7",
+      "name": "Code â€” Explode Asset List"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -352,
+        192
+      ],
+      "id": "3f1b6085-2a9d-4d05-a291-cc0f6aa1a0ed",
+      "name": "Loop â€” Asset Generator"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = items[0].json;\nlet binaryData = null;\nlet mimeType = 'image/png';\nconst filenameSuffix = ($('Loop â€” Asset Generator').item.json.filename_suffix) || '_image';\n\n// --- HELPER 1: Recursive Search for Image Data ---\nfunction findImageString(obj) {\n    if (!obj) return null;\n\n    // A. If it's a string, check if it looks like an image\n    if (typeof obj === 'string') {\n        // Priority 1: Standard Data URI (with prefix)\n        if (obj.match(/^data:image\\/.*;base64,/)) return obj;\n        // Priority 2: Direct URL (ignoring airtable/system links)\n        if (obj.match(/^https?:\\/\\/.*(png|jpg|jpeg|webp)/i) && !obj.includes('airtable')) return obj;\n        // Priority 3: Embedded Markdown/Text URL\n        const embeddedUrl = obj.match(/(https?:\\/\\/[^\\s)\"']+|data:image\\/[a-zA-Z]+;base64,[^\\s)\"']+)/);\n        if (embeddedUrl && !obj.includes('airtable')) return embeddedUrl[0];\n        \n        return null;\n    }\n\n    // B. If it's an Object/Array, traverse it\n    if (typeof obj === 'object') {\n        // --- CRITICAL FIX: Trust specific keys for raw Base64 ---\n        if (obj.b64_json && typeof obj.b64_json === 'string') return obj.b64_json;\n        if (obj.base64 && typeof obj.base64 === 'string') return obj.base64;\n        \n        // Standard URL check\n        if (obj.url && typeof obj.url === 'string' && !obj.url.includes('airtable')) return findImageString(obj.url);\n        \n        // Otherwise, recursive scan\n        for (const key in obj) {\n            // Skip large system keys\n            if (key === 'cachedResultUrl' || key === 'input' || key === 'context' || key === 'headers') continue;\n            \n            const found = findImageString(obj[key]);\n            if (found) return found;\n        }\n    }\n    return null;\n}\n\n// --- HELPER 2: Parse Base64 ---\nfunction parseDataUri(uri) {\n    const matches = uri.match(/^data:(.+);base64,(.+)$/);\n    if (matches) {\n        return { mime: matches[1], data: matches[2] };\n    }\n    // Fallback: Assume raw PNG data\n    return { mime: 'image/png', data: uri }; \n}\n\n// --- MAIN EXECUTION ---\ntry {\n    const rawValue = findImageString(response);\n\n    if (!rawValue) {\n        const keys = Object.keys(response).join(', ');\n        throw new Error(`Deep Search failed. No image found in keys: [${keys}].`);\n    }\n\n    // Convert to Binary\n    if (rawValue.startsWith('http')) {\n        const imgReq = await fetch(rawValue);\n        const buf = await imgReq.arrayBuffer();\n        binaryData = Buffer.from(buf).toString('base64');\n        mimeType = imgReq.headers.get('content-type') || mimeType;\n    } else {\n        const parsed = parseDataUri(rawValue);\n        binaryData = parsed.data;\n        mimeType = parsed.mime;\n    }\n    \n    // Final validation\n    if (!binaryData || binaryData.length < 100) {\n        throw new Error(\"Image data was found but appears corrupted or empty.\");\n    }\n\n    // Get loop context using snake_case keys\n    const loopContext = $('Loop â€” Asset Generator').item.json;\n\n    return [{\n        json: {\n            // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n            // PASS THROUGH ALL LOOP CONTEXT\n            // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n            ...loopContext,\n            \n            // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n            // EXTRACTION RESULTS\n            // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n            status: \"success\",\n            source_type: rawValue.startsWith('http') ? 'url' : 'base64'\n        },\n        binary: {\n            data: {\n                data: binaryData,\n                mimeType: mimeType,\n                fileName: `generated${filenameSuffix}.${mimeType.split('/')[1]}`\n            }\n        }\n    }];\n\n} catch (error) {\n    // Get loop context for error tracking\n    const loopContext = $('Loop â€” Asset Generator').item.json;\n    \n    return [{\n        json: {\n            ...loopContext,\n            status: \"error\",\n            error_message: error.message || \"Unknown error occurred\"\n        }\n    }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        112
+      ],
+      "id": "02a1ed00-259c-42a7-86cb-4daa979bc307",
+      "name": "Code â€” Extract URL"
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.drive_filename }}",
+        "driveId": {
+          "__rl": true,
+          "value": "=",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REDACTED_FOLDER_48E1F9",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        768,
+        112
+      ],
+      "id": "64606199-6f21-408c-a0ee-0131a790ab3e",
+      "name": "System â€” Save to Drive",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1088,
+        416
+      ],
+      "id": "5258dddc-925d-4faa-8ff2-6090399bc3ce",
+      "name": "Claude Sonnet 4 (Visuals)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "38b2f3af-b19d-412e-b31f-3e77f617d0a0",
+              "leftValue": "={{ $json.drive_folder_id || \"\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2272,
+        192
+      ],
+      "id": "c1fd0c6c-144f-4a59-801c-44bfc33b9e8a",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.model_id }}",
+                    "rightValue": "flux",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "74aad46c-019f-46d6-bbdd-7a64118cc67c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "flux_path"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "98feddb3-dd44-4c04-bfe1-1c95e9505764",
+                    "leftValue": "={{ $json.model_id }}",
+                    "rightValue": "gemini",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "gemini_path"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 0
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -128,
+        112
+      ],
+      "id": "41b08e76-fc60-4487-babb-45c3c9451757",
+      "name": "Router â€” Model Selector"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://jcmarx.com"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    model: \"black-forest-labs/flux.2-pro\",\n    // 1. MANDATORY: Tells OpenRouter/Flux this is an image request\n    modalities: [\"image\", \"text\"], \n    messages: [\n      {\n        role: \"user\",\n        // 2. ASPECT RATIO: Flux (unlike Gemini) still prefers this in the prompt string\n        content: $json.prompt + \" --aspect \" + ($json.aspect_ratio || \"16:9\")\n      }\n    ]\n  })\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        96,
+        16
+      ],
+      "id": "e30da929-7d47-471b-aea1-c346f57ff05c",
+      "name": "API â€” Generate Image (Flux.2 Pro)",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Uses Flux 1.1 Pro via OpenRouter. Excellent for text and photorealism."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://jcmarx.com"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    model: \"google/gemini-3-pro-image-preview\",\n    // CRITICAL: Tells Gemini to output an image, not just text\n    modalities: [\"image\", \"text\"], \n    messages: [\n      {\n        role: \"user\",\n        // Clean prompt (Gemini prefers natural language without --flags)\n        content: $json.prompt \n      }\n    ],\n    // Correct way to set aspect ratio for Gemini\n    image_config: {\n      aspect_ratio: $json.aspect_ratio || \"16:9\" \n    }\n  })\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        96,
+        208
+      ],
+      "id": "c90250a6-cc79-45fd-9589-03c1188c20f4",
+      "name": "API â€” Generate Image (Gemini 3 Pro)",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "openRouterApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "OpenRouter account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Uses Flux 1.1 Pro via OpenRouter. Excellent for text and photorealism."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e76bc777-156a-499f-a711-c58ef64bee3a",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        544,
+        112
+      ],
+      "id": "957d0bfe-6b28-4539-9e88-39b04c1caf13",
+      "name": "Gatekeeper"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Filter New Assets (v2.0 Standardized)\n// \n// Filters out assets that already exist (idempotency)\n// Uses snake_case keys\n// ================================================================\n\nconst plannedItems = $('Code â€” Explode Asset List').all();\n\n// Get existing keys (if checking against Airtable or Drive)\n// For now, pass through all items (implement dedup logic as needed)\n\nreturn plannedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        192
+      ],
+      "id": "1f2c09e1-55f9-46b5-a77a-1e94a68fc81f",
+      "name": "Code â€” Filter New Assets"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Merge Folder + Context (v2.1 Standardized)\n// \n// Merges folder creation result with normalized context\n// Uses snake_case keys throughout\n// ================================================================\n\nconst incoming = $json;\nconst original = $('If').item.json;\n\nif (!original) {\n  throw new Error('Missing context from If node');\n}\n\n// Folder ID: either from existing context OR from newly created folder\nconst folderId =\n  original.drive_folder_id ||\n  (incoming && incoming.id ? incoming.id : null);\n\nconst folderUrl = folderId \n  ? `https://drive.google.com/drive/folders/${folderId}` \n  : null;\n\nreturn [{\n  json: {\n    // Pass through entire original normalized context\n    ...original,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // DRIVE DATA (updated)\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    drive_folder_id: folderId,\n    drive_folder_url: folderUrl,\n    \n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    // STAGE TRACKING\n    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n    _stage: \"IMAGES_FOLDER_READY\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        192
+      ],
+      "id": "9ee5c38d-54be-43c9-a010-5a7276b06365",
+      "name": "Code â€” Merge Folder + Context (v2.0 â€” Canonical Structure Compatible)"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ ($json.copy_id || $json[\"Copy ID\"] || $json.traffic_leak_record_id || \"UNKNOWN\") + \" - IMAGES\" }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REDACTED_FOLDER_7C6CF7",
+          "mode": "list",
+          "cachedResultName": "Passive Affiliate Assets",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/16A2G7v-6-_Sg7VYXzt3KXLm7mYKNxCrp"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -2048,
+        256
+      ],
+      "id": "60c7f880-7b8a-44af-8bfe-3e4f3fd8595e",
+      "name": "System â€” Create folder",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED237DD2",
+          "mode": "list",
+          "cachedResultName": "Images",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTED2961AF"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Traffic Leak": "={{ $json.traffic_leak_record_id ? [$json.traffic_leak_record_id] : [] }}",
+            "Image ID": "={{ $json.traffic_leak_record_id }}-IMAGES",
+            "Drive Folder URL": "={{ $json.drive_folder_url }}",
+            "Status": "In Progress"
+          },
+          "matchingColumns": [
+            "Image ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Image ID",
+              "displayName": "Image ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Drive Folder URL",
+              "displayName": "Drive Folder URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Visual Theme",
+              "displayName": "Visual Theme",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Assets Generated",
+              "displayName": "Assets Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Queued",
+                  "value": "Queued"
+                },
+                {
+                  "name": "In Progress",
+                  "value": "In Progress"
+                },
+                {
+                  "name": "Complete",
+                  "value": "Complete"
+                },
+                {
+                  "name": "Failed",
+                  "value": "Failed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created At",
+              "displayName": "Created At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -1600,
+        192
+      ],
+      "id": "a827967a-5886-42e3-839e-795297a3e01b",
+      "name": "Airtable â€” Create Images Record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED237DD2",
+          "mode": "list",
+          "cachedResultName": "Images",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTED2961AF"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Assets Generated": "={{ $('Code â€” Explode Asset List').all().length }}",
+            "Image ID": "={{ $('Airtable â€” Create Images Record').item.json.fields[\"Image ID\"] }}",
+            "Visual Theme": "={{ $('Code â€” Explode Asset List').first().json.visual_theme }}"
+          },
+          "matchingColumns": [
+            "Image ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Image ID",
+              "displayName": "Image ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Traffic Leak",
+              "displayName": "Traffic Leak",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Drive Folder URL",
+              "displayName": "Drive Folder URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Visual Theme",
+              "displayName": "Visual Theme",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Assets Generated",
+              "displayName": "Assets Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Queued",
+                  "value": "Queued"
+                },
+                {
+                  "name": "In Progress",
+                  "value": "In Progress"
+                },
+                {
+                  "name": "Complete",
+                  "value": "Complete"
+                },
+                {
+                  "name": "Failed",
+                  "value": "Failed"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Created At",
+              "displayName": "Created At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        992,
+        112
+      ],
+      "id": "54454380-3919-4974-aabe-6335a28753a2",
+      "name": "Airtable â€” Finalize Images Record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED82385D",
+          "mode": "list",
+          "cachedResultName": "Traffic Leaks",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDA446C2"
+        },
+        "filterByFormula": "AND({Status} = \"SOCIAL_COMPLETE\", {Images Generated} = \"\")",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -2720,
+        192
+      ],
+      "id": "c26b30a9-7f9a-47bc-add0-ce90a5c2f886",
+      "name": "Airtable â€” Fetch Items for Images",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -2944,
+        192
+      ],
+      "id": "657f7994-6f4e-4a0c-9da6-54717b83505f",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================================================================\n// Code â€” Normalize Copy + Traffic Leak Data (v1.0)\n// \n// Transforms Airtable response to standardized snake_case contract.\n// Works with EITHER Copy table OR Traffic Leaks table as source.\n// ================================================================\n\nconst items = $input.all();\n\nreturn items.map(item => {\n  const fields = item.json.fields || item.json;\n  const recordId = item.json.id || fields.id;\n  \n  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n  // DETECT SOURCE TABLE\n  // Copy records have \"Copy ID\", Traffic Leak records have \"Leak ID\"\n  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n  const isFromCopy = !!fields['Copy ID'];\n  const isFromTrafficLeak = !!fields['Leak ID'];\n  \n  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n  // EXTRACT IDs BASED ON SOURCE\n  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n  let trafficLeakRecordId, copyId, copyRecordId;\n  \n  if (isFromCopy) {\n    // Source is Copy table\n    copyRecordId = recordId;\n    copyId = fields['Copy ID'] || '';\n    // Traffic Leak is a linked field (returns array of record IDs)\n    trafficLeakRecordId = Array.isArray(fields['Traffic Leak']) \n      ? fields['Traffic Leak'][0] \n      : fields['Traffic Leak'] || null;\n  } else {\n    // Source is Traffic Leaks table\n    trafficLeakRecordId = recordId;\n    // Copy Generated is a linked field\n    copyRecordId = Array.isArray(fields['Copy Generated']) \n      ? fields['Copy Generated'][0] \n      : fields['Copy Generated'] || null;\n    // Derive Copy ID from Video ID\n    const videoId = Array.isArray(fields['Video']) \n      ? fields['Video'][0] \n      : fields['Video ID'] || fields['Leak ID']?.split('v=')[1] || '';\n    copyId = `${videoId}-COPY`;\n  }\n  \n  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n  // DERIVE IMAGE ID\n  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n  const imageId = `${trafficLeakRecordId}-IMAGES`;\n  \n  return {\n    json: {\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // AIRTABLE RECORD IDs (critical for linking)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      traffic_leak_record_id: trafficLeakRecordId,\n      copy_record_id: copyRecordId,\n      images_record_id: null, // Set after Images upsert\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // PRIMARY KEYS\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      copy_id: copyId,\n      image_id: imageId,\n      niche: fields['Niche'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // AVATAR DATA (for Art Director)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      the_who: fields['The Who'] || '',\n      the_pain: fields['The Pain'] || '',\n      the_hook: fields['The Hook'] || '',\n      protocol_name: fields['Protocol Name'] || '',\n      lead_magnet_idea: fields['Lead Magnet Idea'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // VIDEO DATA (for filenames and context)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      video_title: fields['Video Title'] || 'Untitled',\n      video_url: fields['Video URL'] || fields['Leak ID'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // CONTENT (for Art Director prompts)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      blog_post: fields['Blog Post'] || '',\n      video_script: fields['Video Script'] || '',\n      voice_over_text: fields['Voice Over Text'] || '',\n      ig_carousel: fields['IG Carousel'] || '',\n      pinterest_pin: fields['Pinterest Pin'] || '',\n      x_twitter_thread: fields['X/Twitter Thread'] || '',\n      facebook_post: fields['Facebook Post'] || '',\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // DRIVE DATA (may be populated from previous run)\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      drive_folder_id: fields['Google Drive Folder ID'] || null,\n      drive_folder_url: fields['Google Drive Folder ID'] \n        ? `https://drive.google.com/drive/folders/${fields['Google Drive Folder ID']}`\n        : null,\n      \n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      // STAGE TRACKING\n      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n      _stage: 'IMAGES_IN_PROGRESS',\n      _source: 'AAS4_NORMALIZED'\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2496,
+        192
+      ],
+      "id": "86a28703-652d-4845-9f03-0b4a11956706",
+      "name": "Code â€” Normalize Copy + Traffic Leak Data"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appREDACTED7E36C0",
+          "mode": "list",
+          "cachedResultName": "Operations HQ",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblREDACTED82385D",
+          "mode": "list",
+          "cachedResultName": "Traffic Leaks",
+          "cachedResultUrl": "https://airtable.com/appREDACTED67412E/tblREDACTEDA446C2"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "IMAGES_COMPLETE",
+            "Record ID": "={{ $('Loop â€” Project Processor').item.json.traffic_leak_record_id }}"
+          },
+          "matchingColumns": [
+            "Record ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Leak ID",
+              "displayName": "Leak ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Record ID",
+              "displayName": "Record ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Niche",
+              "displayName": "Niche",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Brand Outlet",
+              "displayName": "Brand Outlet",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Video",
+              "displayName": "Video",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Channel",
+              "displayName": "Channel",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Searches",
+              "displayName": "Searches",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Run",
+              "displayName": "Run",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Protocol Fit Score",
+              "displayName": "Protocol Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Kinetic Leak Score",
+              "displayName": "Kinetic Leak Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Days Old",
+              "displayName": "Days Old",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Tags Triggered",
+              "displayName": "Tags Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” AI",
+              "displayName": "Feature â€” AI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” V",
+              "displayName": "Feature â€” V",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” ER",
+              "displayName": "Feature â€” ER",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” DS",
+              "displayName": "Feature â€” DS",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Feature â€” CI",
+              "displayName": "Feature â€” CI",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Who",
+              "displayName": "The Who",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Pain",
+              "displayName": "The Pain",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "The Hook",
+              "displayName": "The Hook",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Protocol Name",
+              "displayName": "Protocol Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Lead Magnet Idea",
+              "displayName": "Lead Magnet Idea",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 1 â€” Hardware (Foundation)",
+              "displayName": "Phase 1 â€” Hardware (Foundation)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 2 â€” Software (Optimization)",
+              "displayName": "Phase 2 â€” Software (Optimization)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phase 3 â€” Maintenance (Insurance)",
+              "displayName": "Phase 3 â€” Maintenance (Insurance)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "STRATEGY_COMPLETE",
+                  "value": "STRATEGY_COMPLETE"
+                },
+                {
+                  "name": "COPY_COMPLETE",
+                  "value": "COPY_COMPLETE"
+                },
+                {
+                  "name": "SOCIAL_COMPLETE",
+                  "value": "SOCIAL_COMPLETE"
+                },
+                {
+                  "name": "IMAGES_COMPLETE",
+                  "value": "IMAGES_COMPLETE"
+                },
+                {
+                  "name": "VIDEO_COMPLETE",
+                  "value": "VIDEO_COMPLETE"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created At",
+              "displayName": "Created At",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Last Modified",
+              "displayName": "Last Modified",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Copy Generated",
+              "displayName": "Copy Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Images Generated",
+              "displayName": "Images Generated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1216,
+        192
+      ],
+      "id": "7d0050ee-31cd-4430-ab8b-6f2eea110cfd",
+      "name": "Airtable â€” Update Traffic Leak Status",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "joncmarx Airtable"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Loop â€” Project Processor": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Agent â€” The Art Director",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent â€” The Art Director": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Explode Asset List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Explode Asset List": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Filter New Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop â€” Asset Generator": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Router â€” Model Selector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Extract URL": {
+      "main": [
+        [
+          {
+            "node": "Gatekeeper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "System â€” Save to Drive": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Finalize Images Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet 4 (Visuals)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent â€” The Art Director",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Merge Folder + Context (v2.0 â€” Canonical Structure Compatible)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "System â€” Create folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router â€” Model Selector": {
+      "main": [
+        [
+          {
+            "node": "API â€” Generate Image (Flux.2 Pro)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API â€” Generate Image (Gemini 3 Pro)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” Generate Image (Flux.2 Pro)": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Extract URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API â€” Generate Image (Gemini 3 Pro)": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Extract URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper": {
+      "main": [
+        [
+          {
+            "node": "System â€” Save to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Filter New Assets": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Asset Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Merge Folder + Context (v2.0 â€” Canonical Structure Compatible)": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Create Images Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "System â€” Create folder": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Merge Folder + Context (v2.0 â€” Canonical Structure Compatible)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Create Images Record": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Project Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Fetch Items for Images": {
+      "main": [
+        [
+          {
+            "node": "Code â€” Normalize Copy + Traffic Leak Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Finalize Images Record": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Update Traffic Leak Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Airtable â€” Fetch Items for Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code â€” Normalize Copy + Traffic Leak Data": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable â€” Update Traffic Leak Status": {
+      "main": [
+        [
+          {
+            "node": "Loop â€” Project Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "timezone": "America/Denver",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "Gqu8ge7IqmtyuAaG",
+    "timeSavedPerExecution": 240
+  },
+  "versionId": "c6fd68dc-c28d-4678-8cbd-097bca9617a3",
+  "meta": {
+    "instanceId": "ca812eb3564963eff00a3a24177fd9ff074e03d85e8d765e49b67aad3f0657de"
+  },
+  "id": "N1REkH8dvuZDgXG1",
+  "tags": [
+    {
+      "updatedAt": "2025-12-08T19:48:42.564Z",
+      "createdAt": "2025-12-08T19:48:42.564Z",
+      "id": "zU2QjEuyyFecYpw2",
+      "name": "AI Agency"
+    }
+  ],
+  "_sanitized": {
+    "timestamp": "2026-01-07T21:45:28.257536",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": true
+  }
+}
