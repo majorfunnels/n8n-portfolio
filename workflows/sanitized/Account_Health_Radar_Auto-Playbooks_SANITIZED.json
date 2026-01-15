@@ -1,0 +1,1825 @@
+{
+  "name": "Account Health Radar + Auto-Playbooks",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "f52d3808-0b3f-4d76-b71b-79a2ceb42ba7",
+      "name": "Daily 7AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2016,
+        1328
+      ],
+      "notes": "Runs daily at 07:00 America/Denver"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4bdf35d1-58dd-446b-9202-6e71f7f0455e",
+              "name": "sheets.spreadsheet_id",
+              "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "37b6e564-1550-4a56-bcb5-1b09e044062f",
+              "name": "task_settings.trello_board_id",
+              "value": "YOUR_TRELLO_BOARD_ID",
+              "type": "string"
+            },
+            {
+              "id": "297e19b5-22cd-4d54-8a01-2632fac9a823",
+              "name": "task_settings.trello_list_id",
+              "value": "YOUR_TRELLO_LIST_ID",
+              "type": "string"
+            },
+            {
+              "id": "69f6cc2f-e3ce-4ff8-993c-3e7a60c5c477",
+              "name": "notifications.slack_channel",
+              "value": "#customer-health",
+              "type": "string"
+            },
+            {
+              "id": "5d0f95ba-cdab-4470-b6ec-ec3d32fa5ded",
+              "name": "DEMO_MODE",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "679f70fa-02e2-4617-ada7-6e44d349dc4e",
+      "name": "Load Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1792,
+        1328
+      ],
+      "notes": "Configuration settings - EDIT DEMO_MODE and IDs here"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Initialize run tracking\nconst runId = `run_${Date.now()}`;\nconst runTimestamp = new Date().toISOString();\n\nreturn [{\n  json: {\n    run_id: runId,\n    run_timestamp: runTimestamp,\n    accounts_processed: 0,\n    accounts_success: 0,\n    accounts_failed: 0,\n    green_count: 0,\n    yellow_count: 0,\n    red_count: 0,\n    errors: [],\n    config: $input.first().json\n  }\n}];"
+      },
+      "id": "4a21b995-7d6b-4c9d-b8a8-4db8b256eb1b",
+      "name": "Initialize Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1568,
+        1328
+      ],
+      "notes": "Creates run tracking object"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "demo-mode-check",
+              "leftValue": "={{ $json.config.DEMO_MODE }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a4086784-26b6-41d6-bad8-e095f8ce9468",
+      "name": "Demo Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1344,
+        1328
+      ],
+      "notes": "Routes to demo data or live sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate 10 synthetic demo accounts with varied health profiles\nconst today = new Date();\n\nfunction addDays(date, days) {\n  const result = new Date(date);\n  result.setDate(result.getDate() + days);\n  return result.toISOString().split('T')[0];\n}\n\nfunction randomBetween(min, max) {\n  return Math.floor(Math.random() * (max - min + 1)) + min;\n}\n\nconst profiles = [\n  // 3 Healthy accounts (Green)\n  { health: 'green', usageMult: 1.1, tickets: 1, nps: 9, sentiment: 0.7, championDays: 3, csmDays: 5, failedPayments: 0, renewal: 120 },\n  { health: 'green', usageMult: 1.2, tickets: 0, nps: 10, sentiment: 0.8, championDays: 2, csmDays: 3, failedPayments: 0, renewal: 180 },\n  { health: 'green', usageMult: 1.0, tickets: 2, nps: 9, sentiment: 0.6, championDays: 5, csmDays: 7, failedPayments: 0, renewal: 90 },\n  \n  // 4 Mild Risk accounts (Yellow)\n  { health: 'yellow', usageMult: 0.75, tickets: 3, nps: 7, sentiment: 0.3, championDays: 15, csmDays: 12, failedPayments: 0, renewal: 75 },\n  { health: 'yellow', usageMult: 0.85, tickets: 4, nps: 6, sentiment: 0.2, championDays: 10, csmDays: 18, failedPayments: 0, renewal: 55 },\n  { health: 'yellow', usageMult: 0.90, tickets: 6, nps: 7, sentiment: 0.1, championDays: 8, csmDays: 10, failedPayments: 1, renewal: 100 },\n  { health: 'yellow', usageMult: 0.80, tickets: 2, nps: 5, sentiment: -0.1, championDays: 20, csmDays: 8, failedPayments: 0, renewal: 40 },\n  \n  // 3 Severe Risk accounts (Red)\n  { health: 'red', usageMult: 0.45, tickets: 9, nps: 3, sentiment: -0.6, championDays: 45, csmDays: 35, failedPayments: 2, renewal: 25 },\n  { health: 'red', usageMult: 0.35, tickets: 12, nps: 2, sentiment: -0.7, championDays: 60, csmDays: 28, failedPayments: 3, renewal: 15 },\n  { health: 'red', usageMult: 0.55, tickets: 7, nps: 4, sentiment: -0.4, championDays: 35, csmDays: 40, failedPayments: 1, renewal: 20 }\n];\n\nconst companyNames = [\n  'Acme Corp', 'TechStart Inc', 'Global Solutions', 'DataDriven Co',\n  'CloudFirst Ltd', 'Innovate Labs', 'Enterprise Plus', 'ScaleUp Systems',\n  'NextGen Tech', 'Alpha Industries'\n];\n\nconst tiers = ['enterprise', 'growth', 'starter'];\nconst csms = [\n  { email: 'redacted@example.com', name: 'Jane Smith' },\n  { email: 'redacted@example.com', name: 'Mike Johnson' },\n  { email: 'redacted@example.com', name: 'Sarah Williams' }\n];\n\nconst accounts = profiles.map((profile, index) => {\n  const baseUsage = randomBetween(800, 2000);\n  const csm = csms[index % csms.length];\n  const tier = index < 3 ? 'enterprise' : (index < 7 ? 'growth' : 'starter');\n  const mrr = tier === 'enterprise' ? randomBetween(4000, 8000) : (tier === 'growth' ? randomBetween(1000, 3000) : randomBetween(200, 800));\n  \n  return {\n    // Account info\n    account_id: `demo_${String(index + 1).padStart(3, '0')}`,\n    account_name: companyNames[index],\n    tier: tier,\n    mrr: mrr,\n    renewal_date: addDays(today, profile.renewal),\n    csm_email: csm.email,\n    csm_name: csm.name,\n    champion_email: `champion@${companyNames[index].toLowerCase().replace(/\\s+/g, '')}.com`,\n    champion_name: `Champion ${index + 1}`,\n    exec_sponsor_present: tier === 'enterprise' && profile.health === 'green',\n    industry: ['SaaS', 'Finance', 'Healthcare', 'Retail', 'Manufacturing'][index % 5],\n    employee_count: randomBetween(50, 500),\n    \n    // Usage signals\n    usage_7d: Math.round(baseUsage * profile.usageMult * 0.25),\n    usage_30d: Math.round(baseUsage * profile.usageMult),\n    baseline_usage: baseUsage,\n    dau_7d_avg: Math.round(randomBetween(5, 25) * profile.usageMult),\n    feature_adoption_pct: profile.health === 'green' ? randomBetween(60, 85) : (profile.health === 'yellow' ? randomBetween(35, 55) : randomBetween(15, 35)),\n    \n    // Support signals\n    tickets_7d_count: profile.tickets,\n    tickets_7d_severity_weighted: profile.tickets * randomBetween(1, 3),\n    tickets_30d_count: profile.tickets * 3,\n    sla_breaches_30d: profile.health === 'red' ? randomBetween(1, 4) : 0,\n    avg_resolution_hours: profile.health === 'green' ? randomBetween(4, 12) : (profile.health === 'yellow' ? randomBetween(18, 36) : randomBetween(48, 96)),\n    open_tickets: Math.ceil(profile.tickets / 2),\n    \n    // Billing signals\n    billing_failed_payments_30d: profile.failedPayments,\n    downgrade_flag: profile.health === 'red' && index === 8,\n    expansion_flag: profile.health === 'green',\n    invoice_overdue_days: profile.failedPayments > 0 ? randomBetween(5, 20) : 0,\n    \n    // Sentiment signals\n    nps_last: profile.nps,\n    nps_date: addDays(today, -randomBetween(5, 30)),\n    csat_last: profile.nps >= 8 ? randomBetween(40, 50) / 10 : (profile.nps >= 5 ? randomBetween(28, 38) / 10 : randomBetween(15, 28) / 10),\n    sentiment_score: profile.sentiment,\n    \n    // Engagement signals\n    days_since_last_csm_touch: profile.csmDays,\n    champion_last_seen_days: profile.championDays,\n    meetings_30d: profile.health === 'green' ? randomBetween(2, 4) : (profile.health === 'yellow' ? randomBetween(0, 2) : 0),\n    emails_sent_30d: randomBetween(3, 10),\n    emails_opened_30d: profile.health === 'green' ? randomBetween(3, 8) : randomBetween(0, 3),\n    \n    // Metadata\n    _demo_profile: profile.health,\n    _generated_at: new Date().toISOString()\n  };\n});\n\nreturn accounts.map(acc => ({ json: acc }));"
+      },
+      "id": "73178469-aa93-4050-a810-345e6985ce87",
+      "name": "Generate Demo Accounts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        1040
+      ],
+      "notes": "Creates 10 synthetic accounts: 3 green, 4 yellow, 3 red"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "=YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 518413458,
+          "mode": "list",
+          "cachedResultName": "DEMO_DATA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID_HERE/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "287a87d4-4643-4f28-bf06-c346d92b5622",
+      "name": "Load from Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1120,
+        1232
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "notes": "Default live source - loads from Accounts sheet"
+    },
+    {
+      "parameters": {
+        "url": "https://api.hubapi.com/crm/v3/objects/companies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "properties",
+              "value": "name,domain,customer_tier,mrr,renewal_date,hubspot_owner_id"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "79c89544-b7ac-44d6-a738-3e2bdd462477",
+      "name": "Load from HubSpot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1120,
+        1424
+      ],
+      "disabled": true,
+      "notes": "OPTIONAL: Enable if using HubSpot CRM"
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_INSTANCE.salesforce.com/services/data/v58.0/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "salesforceOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "SELECT Id, Name, Account_Tier__c, MRR__c, Contract_End_Date__c, Owner.Email FROM Account WHERE Type = 'Customer'"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "77bb982b-fe60-47b2-8f03-7d57e39c7145",
+      "name": "Load from Salesforce",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1120,
+        1616
+      ],
+      "disabled": true,
+      "notes": "OPTIONAL: Enable if using Salesforce CRM"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize accounts from different sources to standard format\nconst items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  \n  // If already in standard format (demo or sheets), return as-is\n  if (data.account_id) {\n    return { json: data };\n  }\n  \n  // HubSpot format\n  if (data.hs_object_id) {\n    return {\n      json: {\n        account_id: `hs_${data.hs_object_id}`,\n        account_name: data.properties?.name || data.name,\n        tier: data.properties?.customer_tier || 'growth',\n        mrr: parseFloat(data.properties?.mrr) || 0,\n        renewal_date: data.properties?.renewal_date,\n        csm_email: data.properties?.hubspot_owner_id,\n        crm_id: data.hs_object_id,\n        crm_source: 'hubspot'\n      }\n    };\n  }\n  \n  // Salesforce format\n  if (data.Id && data.attributes?.type === 'Account') {\n    return {\n      json: {\n        account_id: `sf_${data.Id}`,\n        account_name: data.Name,\n        tier: data.Account_Tier__c || 'growth',\n        mrr: parseFloat(data.MRR__c) || 0,\n        renewal_date: data.Contract_End_Date__c,\n        csm_email: data.Owner?.Email,\n        crm_id: data.Id,\n        crm_source: 'salesforce'\n      }\n    };\n  }\n  \n  // Return original if format unknown\n  return { json: data };\n});"
+      },
+      "id": "7b2076e4-290b-4541-93a0-98d2d2892902",
+      "name": "Normalize Accounts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        1328
+      ],
+      "notes": "Standardizes account format from any source"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "3b8f73f4-a84b-4c1f-a6a7-7829bd333bc1",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -672,
+        1328
+      ],
+      "notes": "Process accounts in batches of 5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass through ALL accounts for signal collection\n  const items = $input.all();\n  return items.map(item => ({\n    json: { ...item.json, _processing_started: new Date().toISOString() }\n  }));"
+      },
+      "id": "7b2469a0-dc07-41b5-bd37-bc526973f643",
+      "name": "Start Account Processing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        1328
+      ],
+      "notes": "Marks start of per-account processing"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Load Config').item.json.sheets.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Usage",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "account_id",
+              "lookupValue": "={{ $json.account_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f09ef4d6-d98f-4af0-a7a2-57e088b6edc3",
+      "name": "Sheets: Usage",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -224,
+        528
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "Default: Load usage from Sheets"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mixpanel.com/api/2.0/jql",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "script",
+              "value": "function main() { return Events({ from_date: '{{ $now.minus(30, \"days\").format(\"yyyy-MM-dd\") }}', to_date: '{{ $now.format(\"yyyy-MM-dd\") }}' }).filter(e => e.properties.account_id === '{{ $json.account_id }}').groupBy(['properties.account_id'], mixpanel.reducer.count()); }"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "21093711-6b9b-4b17-bb6e-8926232ba65c",
+      "name": "Mixpanel: Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        720
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Usage from Mixpanel"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Load Config').item.json.sheets.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "account_id",
+              "lookupValue": "={{ $json.account_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "baa0af74-f617-4fdf-b296-b9ec99a1c189",
+      "name": "Sheets: Tickets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -224,
+        912
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "Default: Load tickets from Sheets"
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_SUBDOMAIN.zendesk.com/api/v2/search.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "zendeskApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "type:ticket organization:{{ $json.account_name }} created>{{ $now.minus(30, \"days\").format(\"yyyy-MM-dd\") }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7f17e921-98da-4169-8430-734281960626",
+      "name": "Zendesk: Tickets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        1104
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Tickets from Zendesk"
+    },
+    {
+      "parameters": {
+        "url": "https://api.intercom.io/conversations",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "intercomApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search",
+              "value": "{{ $json.account_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "96e8eea7-5337-4f77-9814-fbe0a2e10d4b",
+      "name": "Intercom: Conversations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        1392
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Support from Intercom"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Load Config').item.json.sheets.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Billing",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "account_id",
+              "lookupValue": "={{ $json.account_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "19cbf5c2-bcc2-4b00-a128-17507abf7409",
+      "name": "Sheets: Billing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -224,
+        1584
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "Default: Load billing from Sheets"
+    },
+    {
+      "parameters": {
+        "url": "https://api.stripe.com/v1/charges",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "stripeApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "customer",
+              "value": "={{ $json.stripe_customer_id }}"
+            },
+            {
+              "name": "created[gte]",
+              "value": "={{ Math.floor($now.minus(30, \"days\").toSeconds()) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a858867e-849c-4d40-8255-0d72aff5439d",
+      "name": "Stripe: Charges",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        1776
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Billing from Stripe"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Load Config').item.json.sheets.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "NPS",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "account_id",
+              "lookupValue": "={{ $json.account_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1e26bede-e13b-4c9c-9537-6f1708748bf5",
+      "name": "Sheets: NPS/CSAT",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -224,
+        1968
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "Default: Load NPS/CSAT from Sheets"
+    },
+    {
+      "parameters": {
+        "url": "https://api.delighted.com/v1/survey_responses.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $json.champion_email }}"
+            },
+            {
+              "name": "since",
+              "value": "={{ Math.floor($now.minus(90, \"days\").toSeconds()) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c558089-93fa-4c83-832c-d5f198136fc4",
+      "name": "Delighted: NPS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        2160
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: NPS from Delighted"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all signals for this account\nconst account = $('Start Account Processing').first().json;\n\n// Helper to safely get first item from a node\nfunction getSignals(nodeName) {\n  try {\n    const items = $(nodeName).all();\n    if (items && items.length > 0) {\n      return items[0].json;\n    }\n  } catch (e) {\n    // Node didn't execute or had no output\n  }\n  return {};\n}\n\n// Collect from all enabled sources\nconst usage = getSignals('Sheets: Usage');\nconst tickets = getSignals('Sheets: Tickets');\nconst billing = getSignals('Sheets: Billing');\nconst sentiment = getSignals('Sheets: NPS/CSAT');\n\n// For demo mode, account already has all signals\nif (account._demo_profile) {\n  return [{ json: account }];\n}\n\n// Merge signals into account\nconst mergedSignals = {\n  ...account,\n  \n  // Usage (prefer existing account values if demo)\n  usage_7d: account.usage_7d ?? usage.usage_7d ?? null,\n  usage_30d: account.usage_30d ?? usage.usage_30d ?? null,\n  baseline_usage: account.baseline_usage ?? usage.baseline_usage ?? null,\n  dau_7d_avg: account.dau_7d_avg ?? usage.dau_7d_avg ?? null,\n  feature_adoption_pct: account.feature_adoption_pct ?? usage.feature_adoption_pct ?? null,\n  \n  // Support\n  tickets_7d_count: account.tickets_7d_count ?? tickets.tickets_7d_count ?? null,\n  tickets_7d_severity_weighted: account.tickets_7d_severity_weighted ?? tickets.tickets_7d_severity_weighted ?? null,\n  tickets_30d_count: account.tickets_30d_count ?? tickets.tickets_30d_count ?? null,\n  sla_breaches_30d: account.sla_breaches_30d ?? tickets.sla_breaches_30d ?? null,\n  avg_resolution_hours: account.avg_resolution_hours ?? tickets.avg_resolution_hours ?? null,\n  open_tickets: account.open_tickets ?? tickets.open_tickets ?? null,\n  \n  // Billing\n  billing_failed_payments_30d: account.billing_failed_payments_30d ?? billing.billing_failed_payments_30d ?? null,\n  downgrade_flag: account.downgrade_flag ?? billing.downgrade_flag ?? false,\n  expansion_flag: account.expansion_flag ?? billing.expansion_flag ?? false,\n  invoice_overdue_days: account.invoice_overdue_days ?? billing.invoice_overdue_days ?? null,\n  \n  // Sentiment\n  nps_last: account.nps_last ?? sentiment.nps_last ?? null,\n  nps_date: account.nps_date ?? sentiment.nps_date ?? null,\n  csat_last: account.csat_last ?? sentiment.csat_last ?? null,\n  sentiment_score: account.sentiment_score ?? sentiment.sentiment_score ?? null,\n  \n  // Engagement (these come from account/CRM)\n  days_since_last_csm_touch: account.days_since_last_csm_touch ?? null,\n  champion_last_seen_days: account.champion_last_seen_days ?? null,\n  meetings_30d: account.meetings_30d ?? null,\n  emails_sent_30d: account.emails_sent_30d ?? null,\n  emails_opened_30d: account.emails_opened_30d ?? null,\n  \n  _signals_merged_at: new Date().toISOString()\n};\n\nreturn [{ json: mergedSignals }];"
+      },
+      "id": "19bd53d1-d348-49c8-b9b5-5bd8ff86f58f",
+      "name": "Merge All Signals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1376
+      ],
+      "notes": "Combines all signal sources into unified object"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// SCORING ENGINE - Full implementation\n// ============================================================================\n\nconst config = $('Load Config').first().json;\nconst signals = $input.first().json;\n\n// Config structure\nconst weights = {\n  usage: config['weights.usage'] || 0.30,\n  support: config['weights.support'] || 0.20,\n  billing: config['weights.billing'] || 0.15,\n  sentiment: config['weights.sentiment'] || 0.20,\n  engagement: config['weights.engagement'] || 0.15\n};\n\nconst thresholds = {\n  green_min: config['thresholds.green_min'] || 70,\n  yellow_min: config['thresholds.yellow_min'] || 40,\n  usage_drop_pct: config['thresholds.usage_drop_pct'] || 20,\n  usage_critical_drop_pct: config['thresholds.usage_critical_drop_pct'] || 40,\n  ticket_spike_7d: config['thresholds.ticket_spike_7d'] || 5,\n  ticket_spike_severity: config['thresholds.ticket_spike_severity'] || 10,\n  sla_breach_threshold: config['thresholds.sla_breach_threshold'] || 2,\n  engagement_gap_days: config['thresholds.engagement_gap_days'] || 14,\n  champion_silent_days: config['thresholds.champion_silent_days'] || 21,\n  renewal_warning_days: config['thresholds.renewal_warning_days'] || 60,\n  renewal_critical_days: config['thresholds.renewal_critical_days'] || 30,\n  nps_detractor_max: config['thresholds.nps_detractor_max'] || 6,\n  nps_passive_max: config['thresholds.nps_passive_max'] || 8,\n  csat_warning: config['thresholds.csat_warning'] || 3,\n  sentiment_negative: config['thresholds.sentiment_negative'] || -0.2,\n  failed_payment_threshold: config['thresholds.failed_payment_threshold'] || 1,\n  feature_adoption_low_pct: config['thresholds.feature_adoption_low_pct'] || 30\n};\n\nconst defaults = {\n  usage_7d: 0, usage_30d: 0, baseline_usage: 100,\n  tickets_7d: 0, nps: 7, csat: 3.5, sentiment: 0,\n  csm_touch_days: 30, champion_days: 30\n};\n\n// Track missing data\nconst missingDataFlags = [];\n\n// Normalize with defaults\nconst usage_7d = signals.usage_7d ?? defaults.usage_7d;\nconst usage_30d = signals.usage_30d ?? defaults.usage_30d;\nconst baseline_usage = signals.baseline_usage ?? defaults.baseline_usage;\nconst tickets_7d = signals.tickets_7d_count ?? defaults.tickets_7d;\nconst tickets_severity = signals.tickets_7d_severity_weighted ?? 0;\nconst sla_breaches = signals.sla_breaches_30d ?? 0;\nconst nps = signals.nps_last ?? defaults.nps;\nconst csat = signals.csat_last ?? defaults.csat;\nconst sentiment = signals.sentiment_score ?? defaults.sentiment;\nconst csm_touch_days = signals.days_since_last_csm_touch ?? defaults.csm_touch_days;\nconst champion_days = signals.champion_last_seen_days ?? defaults.champion_days;\nconst failed_payments = signals.billing_failed_payments_30d ?? 0;\nconst downgrade = signals.downgrade_flag ?? false;\nconst exec_sponsor = signals.exec_sponsor_present ?? false;\nconst feature_adoption = signals.feature_adoption_pct ?? 50;\n\nif (signals.usage_7d === undefined) missingDataFlags.push('usage_7d');\nif (signals.usage_30d === undefined) missingDataFlags.push('usage_30d');\nif (signals.nps_last === undefined) missingDataFlags.push('nps');\nif (signals.csat_last === undefined) missingDataFlags.push('csat');\nif (signals.days_since_last_csm_touch === undefined) missingDataFlags.push('csm_touch');\n\n// Days to renewal\nconst today = new Date();\nconst renewalDate = new Date(signals.renewal_date);\nconst daysToRenewal = Math.ceil((renewalDate - today) / (1000 * 60 * 60 * 24));\n\n// ============================================================================\n// COMPONENT SCORES\n// ============================================================================\n\nconst scoreBreakdown = {\n  usage_score: 0, usage_details: '',\n  support_score: 0, support_details: '',\n  billing_score: 0, billing_details: '',\n  sentiment_score: 0, sentiment_details: '',\n  engagement_score: 0, engagement_details: ''\n};\n\n// USAGE SCORE\nlet usageScore = 100;\nconst usageChange = baseline_usage > 0 ? ((usage_30d - baseline_usage) / baseline_usage) * 100 : 0;\n\nif (usageChange < -thresholds.usage_critical_drop_pct) {\n  usageScore = 20;\n  scoreBreakdown.usage_details = `Critical drop: ${usageChange.toFixed(0)}% vs baseline`;\n} else if (usageChange < -thresholds.usage_drop_pct) {\n  usageScore = 50 + (usageChange + thresholds.usage_critical_drop_pct) * 1.5;\n  scoreBreakdown.usage_details = `Declining: ${usageChange.toFixed(0)}% vs baseline`;\n} else if (usageChange >= 0) {\n  usageScore = Math.min(100, 80 + usageChange * 0.5);\n  scoreBreakdown.usage_details = `Healthy: +${usageChange.toFixed(0)}% vs baseline`;\n} else {\n  usageScore = 70;\n  scoreBreakdown.usage_details = `Slight dip: ${usageChange.toFixed(0)}% vs baseline`;\n}\n\nif (feature_adoption < thresholds.feature_adoption_low_pct) {\n  usageScore = Math.max(20, usageScore - 20);\n  scoreBreakdown.usage_details += `, Low adoption: ${feature_adoption}%`;\n}\nscoreBreakdown.usage_score = Math.round(usageScore);\n\n// SUPPORT SCORE\nlet supportScore = 100;\nif (tickets_7d >= thresholds.ticket_spike_7d) {\n  supportScore -= 30;\n  scoreBreakdown.support_details = `Ticket spike: ${tickets_7d} in 7d`;\n}\nif (tickets_severity >= thresholds.ticket_spike_severity) {\n  supportScore -= 20;\n  scoreBreakdown.support_details += (scoreBreakdown.support_details ? ', ' : '') + `High severity: ${tickets_severity}`;\n}\nif (sla_breaches >= thresholds.sla_breach_threshold) {\n  supportScore -= 25;\n  scoreBreakdown.support_details += (scoreBreakdown.support_details ? ', ' : '') + `SLA breaches: ${sla_breaches}`;\n}\nsupportScore = Math.max(0, supportScore);\nif (!scoreBreakdown.support_details) scoreBreakdown.support_details = `Healthy: ${tickets_7d} tickets, no SLA issues`;\nscoreBreakdown.support_score = Math.round(supportScore);\n\n// BILLING SCORE\nlet billingScore = 100;\nif (failed_payments >= thresholds.failed_payment_threshold) {\n  billingScore -= 40;\n  scoreBreakdown.billing_details = `Failed payments: ${failed_payments}`;\n}\nif (downgrade) {\n  billingScore -= 30;\n  scoreBreakdown.billing_details += (scoreBreakdown.billing_details ? ', ' : '') + 'Downgrade pending';\n}\nif (signals.invoice_overdue_days && signals.invoice_overdue_days > 0) {\n  billingScore -= Math.min(30, signals.invoice_overdue_days);\n  scoreBreakdown.billing_details += (scoreBreakdown.billing_details ? ', ' : '') + `Invoice ${signals.invoice_overdue_days}d overdue`;\n}\nbillingScore = Math.max(0, billingScore);\nif (!scoreBreakdown.billing_details) scoreBreakdown.billing_details = 'Healthy: No billing issues';\nscoreBreakdown.billing_score = Math.round(billingScore);\n\n// SENTIMENT SCORE\nlet sentimentScore = 100;\nif (nps <= thresholds.nps_detractor_max) {\n  sentimentScore -= 40;\n  scoreBreakdown.sentiment_details = `NPS Detractor: ${nps}`;\n} else if (nps <= thresholds.nps_passive_max) {\n  sentimentScore -= 15;\n  scoreBreakdown.sentiment_details = `NPS Passive: ${nps}`;\n} else {\n  scoreBreakdown.sentiment_details = `NPS Promoter: ${nps}`;\n}\nif (csat < thresholds.csat_warning) {\n  sentimentScore -= 25;\n  scoreBreakdown.sentiment_details += `, Low CSAT: ${csat}`;\n}\nif (sentiment < thresholds.sentiment_negative) {\n  sentimentScore -= 20;\n  scoreBreakdown.sentiment_details += `, Negative sentiment: ${sentiment.toFixed(2)}`;\n}\nsentimentScore = Math.max(0, sentimentScore);\nscoreBreakdown.sentiment_score = Math.round(sentimentScore);\n\n// ENGAGEMENT SCORE\nlet engagementScore = 100;\nif (csm_touch_days > thresholds.engagement_gap_days) {\n  engagementScore -= 30;\n  scoreBreakdown.engagement_details = `No CSM touch: ${csm_touch_days}d`;\n}\nif (champion_days > thresholds.champion_silent_days) {\n  engagementScore -= 35;\n  scoreBreakdown.engagement_details += (scoreBreakdown.engagement_details ? ', ' : '') + `Champion silent: ${champion_days}d`;\n}\nif (!exec_sponsor && signals.tier === 'enterprise') {\n  engagementScore -= 15;\n  scoreBreakdown.engagement_details += (scoreBreakdown.engagement_details ? ', ' : '') + 'No exec sponsor';\n}\nengagementScore = Math.max(0, engagementScore);\nif (!scoreBreakdown.engagement_details) scoreBreakdown.engagement_details = `Healthy: CSM touch ${csm_touch_days}d ago`;\nscoreBreakdown.engagement_score = Math.round(engagementScore);\n\n// ============================================================================\n// OVERALL SCORE & BAND\n// ============================================================================\n\nconst healthScore = Math.round(\n  scoreBreakdown.usage_score * weights.usage +\n  scoreBreakdown.support_score * weights.support +\n  scoreBreakdown.billing_score * weights.billing +\n  scoreBreakdown.sentiment_score * weights.sentiment +\n  scoreBreakdown.engagement_score * weights.engagement\n);\n\nlet healthBand;\nif (healthScore >= thresholds.green_min) healthBand = 'Green';\nelse if (healthScore >= thresholds.yellow_min) healthBand = 'Yellow';\nelse healthBand = 'Red';\n\n// ============================================================================\n// RISK REASONS\n// ============================================================================\n\nconst riskReasons = [];\nlet priority = 1;\n\nif (usageChange < -thresholds.usage_drop_pct) {\n  riskReasons.push({\n    code: 'usage_drop', name: 'Usage Drop',\n    severity: usageChange < -thresholds.usage_critical_drop_pct ? 'critical' : 'high',\n    priority: priority++,\n    description: `Usage declined ${Math.abs(usageChange).toFixed(0)}% compared to baseline`,\n    trigger_value: `${usageChange.toFixed(0)}%`, threshold: `-${thresholds.usage_drop_pct}%`\n  });\n}\n\nif (tickets_7d >= thresholds.ticket_spike_7d || tickets_severity >= thresholds.ticket_spike_severity) {\n  riskReasons.push({\n    code: 'ticket_spike', name: 'Ticket Spike',\n    severity: sla_breaches > 0 ? 'critical' : 'high',\n    priority: priority++,\n    description: `${tickets_7d} tickets in 7 days with severity score ${tickets_severity}`,\n    trigger_value: `${tickets_7d} tickets`, threshold: `${thresholds.ticket_spike_7d} tickets`\n  });\n}\n\nif (daysToRenewal <= thresholds.renewal_warning_days && healthScore < thresholds.green_min) {\n  riskReasons.push({\n    code: 'renewal_risk', name: 'Renewal Near + Low Engagement',\n    severity: daysToRenewal <= thresholds.renewal_critical_days ? 'critical' : 'high',\n    priority: priority++,\n    description: `Renewal in ${daysToRenewal} days with health score ${healthScore}`,\n    trigger_value: `${daysToRenewal} days`, threshold: `${thresholds.renewal_warning_days} days`\n  });\n}\n\nif (champion_days > thresholds.champion_silent_days) {\n  riskReasons.push({\n    code: 'champion_silent', name: 'Champion Silent',\n    severity: champion_days > thresholds.champion_silent_days * 2 ? 'critical' : 'high',\n    priority: priority++,\n    description: `Champion hasn't been active for ${champion_days} days`,\n    trigger_value: `${champion_days} days`, threshold: `${thresholds.champion_silent_days} days`\n  });\n}\n\nif (failed_payments >= thresholds.failed_payment_threshold || downgrade) {\n  riskReasons.push({\n    code: 'billing_friction', name: 'Billing Friction / Failed Payment',\n    severity: failed_payments >= 2 ? 'critical' : 'high',\n    priority: priority++,\n    description: `${failed_payments} failed payments${downgrade ? ', downgrade pending' : ''}`,\n    trigger_value: `${failed_payments} failures`, threshold: `${thresholds.failed_payment_threshold} failures`\n  });\n}\n\nif (nps <= thresholds.nps_detractor_max || sentiment < thresholds.sentiment_negative) {\n  riskReasons.push({\n    code: 'poor_sentiment', name: 'Poor Sentiment (NPS/CSAT)',\n    severity: nps <= 4 ? 'critical' : 'high',\n    priority: priority++,\n    description: `NPS: ${nps}, CSAT: ${csat}, Sentiment: ${sentiment.toFixed(2)}`,\n    trigger_value: `NPS ${nps}`, threshold: `NPS > ${thresholds.nps_detractor_max}`\n  });\n}\n\nif (feature_adoption < thresholds.feature_adoption_low_pct && (signals.meetings_30d === undefined || signals.meetings_30d < 2)) {\n  riskReasons.push({\n    code: 'implementation_stalled', name: 'Implementation Stalled',\n    severity: feature_adoption < 20 ? 'critical' : 'medium',\n    priority: priority++,\n    description: `Only ${feature_adoption}% feature adoption with limited engagement`,\n    trigger_value: `${feature_adoption}%`, threshold: `${thresholds.feature_adoption_low_pct}%`\n  });\n}\n\nif (!exec_sponsor && signals.tier === 'enterprise' && daysToRenewal <= 90) {\n  riskReasons.push({\n    code: 'executive_misalignment', name: 'Executive Misalignment',\n    severity: 'medium', priority: priority++,\n    description: 'No executive sponsor identified for enterprise account approaching renewal',\n    trigger_value: 'No sponsor', threshold: 'Sponsor required'\n  });\n}\n\nif (missingDataFlags.length >= 3) {\n  riskReasons.push({\n    code: 'missing_data', name: 'Missing Data',\n    severity: 'low', priority: 99,\n    description: `Missing signals: ${missingDataFlags.join(', ')}`,\n    trigger_value: `${missingDataFlags.length} fields`, threshold: '< 3 fields'\n  });\n}\n\n// ============================================================================\n// PLAYBOOKS\n// ============================================================================\n\nconst playbookMappings = {\n  usage_drop: ['re_engage_usage', 'schedule_training'],\n  ticket_spike: ['support_escalation', 'root_cause_review'],\n  renewal_risk: ['renewal_save_motion', 'exec_alignment'],\n  champion_silent: ['re_engage_champion', 'identify_new_champion'],\n  billing_friction: ['billing_resolution', 'payment_follow_up'],\n  poor_sentiment: ['sentiment_recovery', 'feedback_review'],\n  implementation_stalled: ['implementation_rescue', 'success_plan_review'],\n  executive_misalignment: ['exec_sponsor_outreach', 'value_realization_review']\n};\n\nconst playbooks = [];\nconst addedPlaybooks = new Set();\n\nfor (const risk of riskReasons) {\n  const pbIds = playbookMappings[risk.code] || [];\n  for (const pbId of pbIds) {\n    if (!addedPlaybooks.has(pbId)) {\n      addedPlaybooks.add(pbId);\n      playbooks.push({\n        id: pbId,\n        name: pbId.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase()),\n        priority: risk.priority,\n        triggered_by: risk.code\n      });\n    }\n  }\n}\n\n// ============================================================================\n// NEXT ACTION DATE & SUMMARY\n// ============================================================================\n\nlet nextActionDays = 7;\nif (healthBand === 'Red') nextActionDays = 1;\nelse if (healthBand === 'Yellow') nextActionDays = 3;\nif (daysToRenewal <= 30) nextActionDays = Math.min(nextActionDays, 1);\nelse if (daysToRenewal <= 60) nextActionDays = Math.min(nextActionDays, 3);\n\nconst nextActionDate = new Date();\nnextActionDate.setDate(nextActionDate.getDate() + nextActionDays);\n\n// Generate summary\nconst sentences = [];\nsentences.push(`${signals.account_name} health score is ${healthScore} (${healthBand}) with ${riskReasons.length} active risk${riskReasons.length !== 1 ? 's' : ''}.`);\n\nif (riskReasons.length > 0) {\n  sentences.push(`Primary concern: ${riskReasons[0].name} - ${riskReasons[0].description}.`);\n} else {\n  sentences.push('No significant risks detected at this time.');\n}\n\nconst components = [\n  ['Usage', scoreBreakdown.usage_score],\n  ['Support', scoreBreakdown.support_score],\n  ['Billing', scoreBreakdown.billing_score],\n  ['Sentiment', scoreBreakdown.sentiment_score],\n  ['Engagement', scoreBreakdown.engagement_score]\n].sort((a, b) => a[1] - b[1]);\n\nif (components[0][1] < 70) {\n  sentences.push(`${components[0][0]} score (${components[0][1]}) is the weakest area requiring attention.`);\n} else {\n  sentences.push('All health components are performing adequately.');\n}\n\nif (daysToRenewal <= 30) {\n  sentences.push(`URGENT: Renewal in ${daysToRenewal} days - immediate engagement required.`);\n} else if (daysToRenewal <= 60) {\n  sentences.push(`Renewal in ${daysToRenewal} days - begin renewal preparation now.`);\n} else if (daysToRenewal <= 90) {\n  sentences.push(`Renewal approaching in ${daysToRenewal} days - schedule QBR.`);\n} else {\n  sentences.push(`Renewal in ${daysToRenewal} days - no immediate timeline pressure.`);\n}\n\nif (healthBand === 'Red') {\n  sentences.push('Recommend escalating to CS leadership and scheduling emergency account review.');\n} else if (healthBand === 'Yellow') {\n  sentences.push('Recommend proactive outreach within 48 hours to address identified risks.');\n} else {\n  sentences.push('Account is healthy - continue regular touchpoint cadence.');\n}\n\n// ============================================================================\n// OUTPUT\n// ============================================================================\n\nreturn [{\n  json: {\n    // Account info\n    account_id: signals.account_id,\n    account_name: signals.account_name,\n    tier: signals.tier,\n    mrr: signals.mrr,\n    csm_email: signals.csm_email,\n    csm_name: signals.csm_name,\n    \n    // Scores\n    health_score: healthScore,\n    health_band: healthBand,\n    score_breakdown: scoreBreakdown,\n    \n    // Risks & Actions\n    risk_reasons: riskReasons,\n    risk_count: riskReasons.length,\n    top_risk: riskReasons[0]?.name || null,\n    playbooks: playbooks,\n    next_action_date: nextActionDate.toISOString().split('T')[0],\n    \n    // Summary\n    summary_5_sentences: sentences.join(' '),\n    days_to_renewal: daysToRenewal,\n    missing_data_flags: missingDataFlags,\n    \n    // Metadata\n    _scored_at: new Date().toISOString(),\n    _signals: signals\n  }\n}];"
+      },
+      "id": "1e115bfb-a404-4f07-b9f2-b9ee6eb8a1d1",
+      "name": "Scoring Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        1376
+      ],
+      "notes": "Calculates health score, risks, and playbooks"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1815545196,
+          "mode": "list",
+          "cachedResultName": "Radar_Results",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID_HERE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "account_id": "={{ $json.account_id }}",
+            "account_name": "={{ $json.account_name }}",
+            "tier": "={{ $json.tier }}",
+            "mrr": "={{ $json.mrr }}",
+            "csm_email": "={{ $json.csm_email }}",
+            "csm_name": "={{ $json.csm_name }}",
+            "health_score": "={{ $json.health_score }}",
+            "health_band": "={{ $json.health_band }}",
+            "score_breakdown": "={{ $json.score_breakdown }}",
+            "risk_reasons": "={{ $json.risk_reasons }}",
+            "risk_count": "={{ $json.risk_count }}",
+            "top_risk": "={{ $json.top_risk }}",
+            "playbooks": "={{ $json.playbooks }}",
+            "next_action_date": "={{ $json.next_action_date }}",
+            "summary_5_sentences": "={{ $json.summary_5_sentences }}",
+            "days_to_renewal": "={{ $json.days_to_renewal }}",
+            "missing_data_flags": "={{ $json.missing_data_flags }}",
+            "_scored_at": "={{ $json._scored_at }}",
+            "_signals": "={{ $json._signals }}",
+            "engagement_score": "={{ $json.score_breakdown.engagement_score }}",
+            "sentiment_score": "={{ $json.score_breakdown.sentiment_score }}",
+            "billing_score": "={{ $json.score_breakdown.billing_score }}",
+            "support_score": "={{ $json.score_breakdown.support_score }}",
+            "usage_score": "={{ $json.score_breakdown.usage_score }}",
+            "run_date": "={{ $json._signals._processing_started }}",
+            "run_timestamp": "={{ $json._signals._generated_at }}",
+            "result_id": "={{ 'res_' + $json.account_id + '_' + $now.format('yyyyMMddHHmmss') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "result_id",
+              "displayName": "result_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "account_id",
+              "displayName": "account_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "account_name",
+              "displayName": "account_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_date",
+              "displayName": "run_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_timestamp",
+              "displayName": "run_timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "health_score",
+              "displayName": "health_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "health_band",
+              "displayName": "health_band",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "usage_score",
+              "displayName": "usage_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "support_score",
+              "displayName": "support_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "billing_score",
+              "displayName": "billing_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment_score",
+              "displayName": "sentiment_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "engagement_score",
+              "displayName": "engagement_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_reasons",
+              "displayName": "risk_reasons",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_count",
+              "displayName": "risk_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "top_risk",
+              "displayName": "top_risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "playbooks",
+              "displayName": "playbooks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "next_action_date",
+              "displayName": "next_action_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary_5_sentences",
+              "displayName": "summary_5_sentences",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "csm_email",
+              "displayName": "csm_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tier",
+              "displayName": "tier",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "days_to_renewal",
+              "displayName": "days_to_renewal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mrr",
+              "displayName": "mrr",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "csm_name",
+              "displayName": "csm_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "score_breakdown",
+              "displayName": "score_breakdown",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "missing_data_flags",
+              "displayName": "missing_data_flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "_scored_at",
+              "displayName": "_scored_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "_signals",
+              "displayName": "_signals",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d7fee30f-1817-448c-a5c5-92e05b9948fc",
+      "name": "Write to Radar_Results",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        896,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Default: Save results to Sheets"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $json._signals.crm_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"health_score\": {{ $json.health_score }},\n    \"health_band\": \"{{ $json.health_band }}\",\n    \"top_risk\": \"{{ $json.top_risk || 'None' }}\",\n    \"last_health_check\": \"{{ $now.toISO() }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "5c5a3abf-ba92-4e5b-b8b2-53d2e9edad50",
+      "name": "Update HubSpot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        528
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Update HubSpot fields"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://YOUR_INSTANCE.salesforce.com/services/data/v58.0/sobjects/Account/{{ $json._signals.crm_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "salesforceOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"Health_Score__c\": {{ $json.health_score }},\n  \"Health_Band__c\": \"{{ $json.health_band }}\",\n  \"Top_Risk__c\": \"{{ $json.top_risk || 'None' }}\",\n  \"Last_Health_Check__c\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "edea333c-fb23-4f35-a663-f0e0d35af453",
+      "name": "Update Salesforce",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        2256
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Update Salesforce fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-playbooks",
+              "leftValue": "={{ $json.playbooks.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "02eab51d-a99d-4129-b548-d0c368785905",
+      "name": "Has Playbooks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        448,
+        1920
+      ],
+      "notes": "Only create tasks if playbooks triggered"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate tasks from playbooks\nconst result = $input.first().json;\nconst tasks = [];\n\nfor (const playbook of result.playbooks.slice(0, 3)) { // Limit to top 3 playbooks\n  const taskName = `[${result.health_band}] ${result.account_name}: ${playbook.name}`;\n  const description = [\n    `Account: ${result.account_name}`,\n    `Health Score: ${result.health_score} (${result.health_band})`,\n    `Triggered by: ${playbook.triggered_by}`,\n    ``,\n    `Summary:`,\n    result.summary_5_sentences,\n    ``,\n    `Playbook: ${playbook.name}`,\n    `Priority: ${playbook.priority}`,\n    ``,\n    `Next Action Date: ${result.next_action_date}`\n  ].join('\\n');\n  \n  tasks.push({\n    account_id: result.account_id,\n    account_name: result.account_name,\n    task_name: taskName,\n    description: description,\n    playbook: playbook.name,\n    priority: playbook.priority,\n    health_band: result.health_band,\n    due_date: result.next_action_date,\n    csm_email: result.csm_email\n  });\n}\n\nreturn tasks.map(t => ({ json: t }));"
+      },
+      "id": "16707c4e-c691-4704-8c74-1587715048ef",
+      "name": "Generate Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        1328
+      ],
+      "notes": "Creates task objects from playbooks"
+    },
+    {
+      "parameters": {
+        "listId": "YOUR_TRELLO_LIST_ID",
+        "name": "={{ $json.task_name }}",
+        "description": "={{ $json.description }}",
+        "additionalFields": {
+          "due": "={{ $json.due_date }}"
+        }
+      },
+      "id": "8fd47e80-1241-4d67-976a-623b9dd17ec6",
+      "name": "Create Trello Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        896,
+        1136
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "majorfunnels Trello"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Default: Create task in Trello"
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.task_name }}",
+        "otherProperties": {}
+      },
+      "id": "fe7757a1-d90c-4155-a4b9-53826d297b15",
+      "name": "Create Asana Task",
+      "type": "n8n-nodes-base.asana",
+      "typeVersion": 1,
+      "position": [
+        896,
+        1328
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Create task in Asana"
+    },
+    {
+      "parameters": {
+        "project": "={{ $('Load Config').item.json['task_settings.jira_project_key'] }}",
+        "issueType": "Task",
+        "summary": "={{ $json.task_name }}",
+        "additionalFields": {
+          "description": "={{ $json.description }}",
+          "priority": {
+            "id": "={{ $json.priority <= 2 ? '1' : ($json.priority <= 4 ? '2' : '3') }}"
+          }
+        }
+      },
+      "id": "42ecc96c-a754-4075-8282-eff3ca38a7ac",
+      "name": "Create Jira Issue",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        896,
+        1520
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Create issue in Jira"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all results for aggregation\nconst result = $('Scoring Engine').first().json;\n\nreturn [{ json: result }];"
+      },
+      "id": "b8e8e71a-8762-4909-b7e1-d20c1e7716a1",
+      "name": "Collect Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        1392
+      ],
+      "notes": "Passes result to aggregation"
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT * FROM input1"
+      },
+      "id": "f73ad4f3-f079-4f68-9427-6df49a395d36",
+      "name": "Aggregate All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -448,
+        240
+      ],
+      "notes": "Collects all processed account results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate summary statistics\nconst results = $input.all();\nconst runInfo = $('Initialize Run').first().json;\n\nlet green = 0, yellow = 0, red = 0;\nconst allRisks = [];\nconst errors = [];\n\nfor (const item of results) {\n  const r = item.json;\n  if (r.health_band === 'Green') green++;\n  else if (r.health_band === 'Yellow') yellow++;\n  else if (r.health_band === 'Red') red++;\n  \n  for (const risk of r.risk_reasons || []) {\n    allRisks.push({\n      account: r.account_name,\n      risk: risk.name,\n      severity: risk.severity\n    });\n  }\n}\n\n// Count top risks\nconst riskCounts = {};\nfor (const r of allRisks) {\n  riskCounts[r.risk] = (riskCounts[r.risk] || 0) + 1;\n}\nconst topRisks = Object.entries(riskCounts)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 5)\n  .map(([risk, count]) => `${risk} (${count})`);\n\n// Red accounts for immediate attention\nconst redAccounts = results\n  .filter(r => r.json.health_band === 'Red')\n  .map(r => `${r.json.account_name} (${r.json.health_score})`)\n  .slice(0, 5);\n\nconst summary = {\n  run_id: runInfo.run_id,\n  run_timestamp: runInfo.run_timestamp,\n  accounts_processed: results.length,\n  green_count: green,\n  yellow_count: yellow,\n  red_count: red,\n  top_5_risks: topRisks,\n  red_accounts: redAccounts,\n  avg_health_score: Math.round(results.reduce((sum, r) => sum + r.json.health_score, 0) / results.length),\n  errors: errors\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "5a15df72-6005-4dda-a4ca-17a8cbc13635",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        240
+      ],
+      "notes": "Creates run summary statistics"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#customer-health",
+          "mode": "name"
+        },
+        "text": "=:radar: *Account Health Radar - Daily Report*\n\n*Run:* {{ $json.run_timestamp }}\n*Accounts Processed:* {{ $json.accounts_processed }}\n*Average Health Score:* {{ $json.avg_health_score }}\n\n*Health Distribution:*\n:large_green_circle: Green: {{ $json.green_count }}\n:large_yellow_circle: Yellow: {{ $json.yellow_count }}\n:red_circle: Red: {{ $json.red_count }}\n\n*Top 5 Risks:*\n{{ $json.top_5_risks.join('\\n') }}\n\n{{ $json.red_count > 0 ? '*:rotating_light: Red Accounts Requiring Attention:*\\n' + $json.red_accounts.join('\\n') : '' }}\n\n{{ $json.errors.length > 0 ? '*:warning: Errors:*\\n' + $json.errors.join('\\n') : '' }}",
+        "otherOptions": {}
+      },
+      "id": "4c8f3f73-7121-4ec6-8808-cd868b723b1c",
+      "name": "Slack Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "webhookId": "fb92a3be-ed94-4564-aaf4-2467dc5e7b7f",
+      "credentials": {
+        "slackApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "majorfunnels Slack"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Default: Send summary to Slack"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Load Config').item.json['notifications.email_recipients'] || 'redacted@example.com' }}",
+        "subject": "=Account Health Radar - Daily Report ({{ $json.red_count }} Red, {{ $json.yellow_count }} Yellow)",
+        "message": "=<h2>Account Health Radar - Daily Report</h2>\n\n<p><strong>Run:</strong> {{ $json.run_timestamp }}</p>\n<p><strong>Accounts Processed:</strong> {{ $json.accounts_processed }}</p>\n<p><strong>Average Health Score:</strong> {{ $json.avg_health_score }}</p>\n\n<h3>Health Distribution</h3>\n<ul>\n<li style=\"color: green;\">Green: {{ $json.green_count }}</li>\n<li style=\"color: orange;\">Yellow: {{ $json.yellow_count }}</li>\n<li style=\"color: red;\">Red: {{ $json.red_count }}</li>\n</ul>\n\n<h3>Top 5 Risks</h3>\n<ul>\n{{ $json.top_5_risks.map(r => '<li>' + r + '</li>').join('') }}\n</ul>\n\n{{ $json.red_count > 0 ? '<h3 style=\"color: red;\">Red Accounts Requiring Attention</h3><ul>' + $json.red_accounts.map(a => '<li>' + a + '</li>').join('') + '</ul>' : '' }}\n\n{{ $json.errors.length > 0 ? '<h3 style=\"color: orange;\">Errors</h3><ul>' + $json.errors.map(e => '<li>' + e + '</li>').join('') + '</ul>' : '' }}",
+        "options": {}
+      },
+      "id": "1ad03fba-5ca5-4a05-a9e6-664e0991ec45",
+      "name": "Email Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        384
+      ],
+      "webhookId": "cd6c30a7-efdf-4a0f-a708-382c75030a28",
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "notes": "OPTIONAL: Send summary via Gmail"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1816116363,
+          "mode": "list",
+          "cachedResultName": "Logs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID_HERE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_timestamp": "={{ $json.run_timestamp }}",
+            "run_id": "={{ $json.run_id }}",
+            "green_count": "={{ $json.green_count }}",
+            "yellow_count": "={{ $json.yellow_count }}",
+            "red_count": "={{ $json.red_count }}",
+            "accounts_processed": "={{ $json.accounts_processed }}",
+            "log_id": "={{ 'log_' + $now.format('yyyyMMddHHmmss') }}",
+            "log_level": "success",
+            "node_name": "Run Summary",
+            "message": "Workflow completed successfully"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "log_id",
+              "displayName": "log_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "run_id",
+              "displayName": "run_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_timestamp",
+              "displayName": "run_timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "log_level",
+              "displayName": "log_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "node_name",
+              "displayName": "node_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "accounts_processed",
+              "displayName": "accounts_processed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "accounts_success",
+              "displayName": "accounts_success",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "accounts_failed",
+              "displayName": "accounts_failed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "green_count",
+              "displayName": "green_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "yellow_count",
+              "displayName": "yellow_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "red_count",
+              "displayName": "red_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ec2c8040-19de-4890-8a1d-7ca23afd38a6",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      },
+      "notes": "Log successful run to Logs sheet"
+    },
+    {
+      "parameters": {},
+      "id": "70be1c7b-09d7-4d8c-90eb-dded0e229ef2",
+      "name": "End",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        448,
+        96
+      ],
+      "notes": "Workflow complete"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        384
+      ],
+      "id": "dc321379-5e4c-4707-9b5f-a609b07f0956",
+      "name": "Wait to Log Radar Result",
+      "webhookId": "a460d96e-86a5-49ce-9a41-855c64352b22"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        240
+      ],
+      "id": "24d1a256-966e-4d4f-93ca-6db2c5545c68",
+      "name": "Wait to Log Success",
+      "webhookId": "41a3453b-576f-419a-b26a-48951514b4e6"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 7AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config": {
+      "main": [
+        [
+          {
+            "node": "Initialize Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Run": {
+      "main": [
+        [
+          {
+            "node": "Demo Mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demo Mode?": {
+      "main": [
+        [
+          {
+            "node": "Generate Demo Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load from Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load from HubSpot",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load from Salesforce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Demo Accounts": {
+      "main": [
+        [
+          {
+            "node": "Normalize Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load from Sheets": {
+      "main": [
+        [
+          {
+            "node": "Normalize Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load from HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Normalize Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load from Salesforce": {
+      "main": [
+        [
+          {
+            "node": "Normalize Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Accounts": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Aggregate All Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Start Account Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Account Processing": {
+      "main": [
+        [
+          {
+            "node": "Sheets: Usage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mixpanel: Usage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sheets: Tickets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Zendesk: Tickets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Intercom: Conversations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sheets: Billing",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Stripe: Charges",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sheets: NPS/CSAT",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Delighted: NPS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge All Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets: Usage": {
+      "main": [
+        []
+      ]
+    },
+    "Mixpanel: Usage": {
+      "main": [
+        []
+      ]
+    },
+    "Sheets: Tickets": {
+      "main": [
+        []
+      ]
+    },
+    "Zendesk: Tickets": {
+      "main": [
+        []
+      ]
+    },
+    "Intercom: Conversations": {
+      "main": [
+        []
+      ]
+    },
+    "Sheets: Billing": {
+      "main": [
+        []
+      ]
+    },
+    "Stripe: Charges": {
+      "main": [
+        []
+      ]
+    },
+    "Sheets: NPS/CSAT": {
+      "main": [
+        []
+      ]
+    },
+    "Delighted: NPS": {
+      "main": [
+        []
+      ]
+    },
+    "Merge All Signals": {
+      "main": [
+        [
+          {
+            "node": "Scoring Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scoring Engine": {
+      "main": [
+        [
+          {
+            "node": "Update HubSpot",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Salesforce",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Playbooks?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait to Log Radar Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Radar_Results": {
+      "main": [
+        [
+          {
+            "node": "Collect Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Playbooks?": {
+      "main": [
+        [
+          {
+            "node": "Generate Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Tasks": {
+      "main": [
+        [
+          {
+            "node": "Create Trello Card",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Asana Task",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Jira Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Trello Card": {
+      "main": [
+        [
+          {
+            "node": "Collect Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Result": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate All Results": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [
+        [
+          {
+            "node": "Slack Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait to Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Summary": {
+      "main": [
+        [
+          {
+            "node": "End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success": {
+      "main": [
+        [
+          {
+            "node": "End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "End": {
+      "main": [
+        []
+      ]
+    },
+    "Wait to Log Radar Result": {
+      "main": [
+        [
+          {
+            "node": "Write to Radar_Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait to Log Success": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "a5cbb020-4c22-4266-b5f7-26e5037fee7a",
+  "meta": {
+    "instanceId": "YOUR_INSTANCE_ID"
+  },
+  "id": "YOUR_WORKFLOW_ID",
+  "tags": [],
+  "_sanitized": {
+    "timestamp": "2026-01-15T19:21:15.415832",
+    "tool": "n8n_sanitize.py",
+    "prompts_redacted": false
+  }
+}
