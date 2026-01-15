@@ -72,20 +72,20 @@ A 4-stage automated content pipeline that identifies high-opportunity content ga
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        AAS Pipeline                              │
+│                        AAS Pipeline                             │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐  │
-│  │  AAS-1   │───▶│  AAS-2   │───▶│  AAS-3   │───▶│  AAS-4   │  │
-│  │Discovery │    │   Copy   │    │  Social  │    │  Images  │  │
-│  └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘  │
+│                                                                 │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐   │
+│  │  AAS-1   │───▶│  AAS-2   │───▶│  AAS-3   │───▶│  AAS-4   │   │
+│  │Discovery │    │   Copy   │    │  Social  │    │  Images  │   │
+│  └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘   │
 │       │               │               │               │         │
 │       ▼               ▼               ▼               ▼         │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                    Airtable Hub                          │   │
-│  │  (Traffic Leaks • Videos • Channels • Copy • Images)    │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    Airtable Hub                         │    │
+│  │  (Traffic Leaks • Videos • Channels • Copy • Images)    │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -144,8 +144,8 @@ chmod +x .git/hooks/pre-commit
 
 ## 📬 Contact
 
-- **LinkedIn:** [Your LinkedIn URL]
-- **Email:** [Your Email]
+- **LinkedIn:** https://www.linkedin.com/in/jcmarx/
+- **Email:** majorfunnels@gmail.com
 
 ## 📄 License
 
