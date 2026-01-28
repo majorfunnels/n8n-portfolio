@@ -1,0 +1,704 @@
+{
+  "name": "Lifecycle Onboarding Hub",
+  "nodes": [
+    {
+      "id": "sticky-s1",
+      "name": "PHASE 1: INTAKE & VALIDATION",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, 140],
+      "parameters": {
+        "content": "## 📋 PHASE 1: INTAKE & VALIDATION\n\nCapture success criteria directly from the customer. Nothing gets lost in the sales-to-CS handoff.",
+        "color": 2,
+        "width": 420,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s2",
+      "name": "CRM + CSP enrichment",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 450],
+      "parameters": {
+        "content": "## CRM + CSP enrichment\n\nPull deal context from HubSpot/Salesforce. Get health score from Gainsight, ChurnZero, or Vitally.\n\n*(Inactive for demo)*",
+        "color": 1,
+        "width": 280,
+        "height": 140
+      }
+    },
+    {
+      "id": "sticky-s3",
+      "name": "PHASE 2: AI PLAN GENERATION",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, 540],
+      "parameters": {
+        "content": "## 🤖 PHASE 2: AI PLAN GENERATION\n\nAn AI agent builds a structured 30-day success plan tailored to this customer's stated goals.",
+        "color": 2,
+        "width": 420,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s4",
+      "name": "THE MAGIC MOMENT",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 810],
+      "parameters": {
+        "content": "## ✨ THE MAGIC MOMENT\n\nBespoke plan generated in seconds. Not a template — truly tailored.",
+        "color": 4,
+        "width": 240,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s5",
+      "name": "Playbook trigger",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 850],
+      "parameters": {
+        "content": "## Playbook trigger\n\nLog the plan as a CTA in ChurnZero, Totango, or any CSP with playbooks.\n\n*(Inactive for demo)*",
+        "color": 1,
+        "width": 280,
+        "height": 140
+      }
+    },
+    {
+      "id": "sticky-s6",
+      "name": "PHASE 3: STAKEHOLDER ALIGNMENT",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, 940],
+      "parameters": {
+        "content": "## 📣 PHASE 3: STAKEHOLDER ALIGNMENT\n\nNotify both sides simultaneously. CSM gets Slack, customer gets email. Everyone aligned from Day 1.",
+        "color": 2,
+        "width": 420,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s7",
+      "name": "Dual-channel alignment",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 1210],
+      "parameters": {
+        "content": "## Dual-channel alignment\n\nInternal + external notified at the same moment. No lag.",
+        "color": 4,
+        "width": 240,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s8",
+      "name": "Lifecycle tracking",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 1250],
+      "parameters": {
+        "content": "## Lifecycle tracking\n\nUpdate stage in Salesforce and Totango, Planhat, or Catalyst.\n\n*(Inactive for demo)*",
+        "color": 1,
+        "width": 280,
+        "height": 140
+      }
+    },
+    {
+      "id": "sticky-s9",
+      "name": "PHASE 4: DAY 7 FOLLOW-UP",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, 1340],
+      "parameters": {
+        "content": "## 🔄 PHASE 4: DAY 7 FOLLOW-UP\n\nAI crafts a personalized check-in based on the customer's goals — not boilerplate. Pattern repeats for Day 14 & 30.",
+        "color": 2,
+        "width": 420,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s10",
+      "name": "Personalization at scale",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 1610],
+      "parameters": {
+        "content": "## Personalization at scale\n\nEvery check-in tied to their goals. Not \"Day 7 of onboarding\" generic.",
+        "color": 4,
+        "width": 240,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s11",
+      "name": "Touchpoint logging",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [700, 1610],
+      "parameters": {
+        "content": "## Touchpoint logging\n\nRecord the check-in in Vitally or any CSP with timeline APIs.\n\n*(Inactive for demo)*",
+        "color": 1,
+        "width": 260,
+        "height": 100
+      }
+    },
+    {
+      "id": "sticky-s12",
+      "name": "DEMO NOTE",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [400, 1750],
+      "parameters": {
+        "content": "## 💡 DEMO NOTE\n\nIn production: Day 14 and Day 30 branches extend from Phase 3, triggered by schedule or product events. This shows the pattern.",
+        "color": 7,
+        "width": 400,
+        "height": 120
+      }
+    },
+    {
+      "id": "node-1-1",
+      "name": "Onboarding Intake Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [260, 300],
+      "parameters": {
+        "formTitle": "Customer Onboarding Intake",
+        "formDescription": "Welcome! Please share your goals and context so we can create a personalized success plan.",
+        "responseMode": "onReceived",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "customerName",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Your name"
+            },
+            {
+              "fieldLabel": "companyName",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Company name"
+            },
+            {
+              "fieldLabel": "primaryContactEmail",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "your.email@company.com"
+            },
+            {
+              "fieldLabel": "successCriteria",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "What does success look like in 90 days?"
+            },
+            {
+              "fieldLabel": "concernsOrContext",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "Any concerns or context we should know about?"
+            },
+            {
+              "fieldLabel": "csmName",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "CSM's name"
+            },
+            {
+              "fieldLabel": "csmSlackHandle",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "@jessica"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-1-2",
+      "name": "Structure Intake Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field-1",
+              "name": "customerName",
+              "value": "={{ $json.customerName }}",
+              "type": "string"
+            },
+            {
+              "id": "field-2",
+              "name": "companyName",
+              "value": "={{ $json.companyName }}",
+              "type": "string"
+            },
+            {
+              "id": "field-3",
+              "name": "primaryContactEmail",
+              "value": "={{ $json.primaryContactEmail }}",
+              "type": "string"
+            },
+            {
+              "id": "field-4",
+              "name": "successCriteria",
+              "value": "={{ $json.successCriteria }}",
+              "type": "string"
+            },
+            {
+              "id": "field-5",
+              "name": "concernsOrContext",
+              "value": "={{ $json.concernsOrContext || \"None provided\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-6",
+              "name": "csmName",
+              "value": "={{ $json.csmName }}",
+              "type": "string"
+            },
+            {
+              "id": "field-7",
+              "name": "csmSlackHandle",
+              "value": "={{ $json.csmSlackHandle }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-1-3",
+      "name": "HubSpot: Get Deal Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/placeholder"
+      },
+      "disabled": true
+    },
+    {
+      "id": "node-1-4",
+      "name": "Gainsight: Get Health Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/placeholder"
+      },
+      "disabled": true
+    },
+    {
+      "id": "node-2-1",
+      "name": "Generate 30-Day Plan",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [260, 700],
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a Customer Success onboarding specialist. Given a new customer's stated goals and context, create a structured 30-day success plan.\n\n## Customer Information\n- Customer Name: {{ $json.customerName }}\n- Company: {{ $json.companyName }}\n- Success Criteria: {{ $json.successCriteria }}\n- Concerns/Context: {{ $json.concernsOrContext }}\n- CSM: {{ $json.csmName }}\n\n## Output Format\n\nAlways output these exact sections using markdown:\n\n# 30-Day Success Plan: [Company Name]\n\n## Success Criteria\n[Restate their goals in clear, measurable terms]\n\n## Your Onboarding Team\n- CSM: [CSM Name]\n- Champion: [Customer Name]\n\n## Week 1: Foundation\n[3-4 specific, actionable items based on their goals]\n\n## Week 2: Activation\n[3-4 specific, actionable items]\n\n## Week 3-4: Momentum\n[3-4 specific, actionable items]\n\n## Key Milestones & Check-ins\n- Day 7: [Specific checkpoint tied to Week 1 goals]\n- Day 14: [Specific checkpoint tied to Week 2 goals]\n- Day 30: [Success review criteria]\n\n## Resources\n[Suggest 2-3 relevant enablement topics based on their stated goals]\n\n## Addressing Your Concerns\n[Acknowledge anything they flagged in the intake, or state \"No specific concerns were raised — we'll check in regularly to ensure everything stays on track.\"]\n\n---\n\nBe specific, actionable, and tie everything back to their stated success criteria. Write in a warm, professional tone."
+      }
+    },
+    {
+      "id": "node-2-1-llm",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [280, 900],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-2-2",
+      "name": "Create Doc: Success Plan",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [500, 700],
+      "parameters": {
+        "operation": "create",
+        "title": "=30-Day Success Plan: {{ $json.companyName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "myDrive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root"
+        },
+        "options": {
+          "body": "={{ $('Generate 30-Day Plan').item.json.output }}"
+        }
+      }
+    },
+    {
+      "id": "node-2-3",
+      "name": "Capture Doc URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [740, 700],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "doc-url",
+              "name": "docUrl",
+              "value": "={{ $json.webViewLink }}",
+              "type": "string"
+            },
+            {
+              "id": "doc-id",
+              "name": "docId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-2-4",
+      "name": "ChurnZero: Create CTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 700],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/placeholder"
+      },
+      "disabled": true
+    },
+    {
+      "id": "node-3-1",
+      "name": "Notify CSM",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [260, 1100],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#customer-success"
+        },
+        "text": "=:rocket: New onboarding kicked off: *{{ $json.companyName }}*\n\nChampion: {{ $json.customerName }} ({{ $json.primaryContactEmail }})\nSuccess Plan: {{ $json.docUrl }}\n\nDay 7 check-in scheduled.\n\ncc: {{ $json.csmSlackHandle }}"
+      }
+    },
+    {
+      "id": "node-3-2",
+      "name": "Welcome Customer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [500, 1100],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.primaryContactEmail }}",
+        "subject": "=Your 30-Day Success Plan is Ready, {{ $json.customerName }}",
+        "emailType": "text",
+        "message": "=Hi {{ $json.customerName }},\n\nWelcome aboard! I've put together a personalized success plan based on what you shared with us.\n\n👉 View your plan: {{ $json.docUrl }}\n\nThis plan is tailored to your goals and lays out exactly what we'll accomplish together over the next 30 days.\n\nI'll check in at Day 7 to see how the first week is going. In the meantime, reply to this email anytime — I'm here to help.\n\nBest,\n{{ $json.csmName }}"
+      }
+    },
+    {
+      "id": "node-3-3",
+      "name": "Salesforce: Update Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 1100],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/placeholder"
+      },
+      "disabled": true
+    },
+    {
+      "id": "node-3-4",
+      "name": "Totango: Update Lifecycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 1100],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/placeholder"
+      },
+      "disabled": true
+    },
+    {
+      "id": "node-4-1",
+      "name": "Craft Day 7 Message",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [260, 1500],
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a Customer Success Manager writing a Day 7 check-in email.\n\n## Customer Context\n- Customer Name: {{ $json.customerName }}\n- Company: {{ $json.companyName }}\n- Original Success Criteria: {{ $json.successCriteria }}\n- Their Concerns: {{ $json.concernsOrContext }}\n- Success Plan: {{ $json.docUrl }}\n\n## Task\n\nWrite a brief, warm Day 7 check-in email that:\n1. Acknowledges they're one week into onboarding\n2. Asks ONE specific question tied to their Week 1 goals\n3. Offers a lightweight next step or helpful resource\n4. Keeps the total length under 100 words\n\n## Tone\nHelpful, not pushy. Human, not robotic. Like a colleague checking in, not a sales follow-up.\n\n## Output\nReturn ONLY the email body text (no subject line, no signature — those will be added separately)."
+      }
+    },
+    {
+      "id": "node-4-1-llm",
+      "name": "OpenAI Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [280, 1700],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-4-2",
+      "name": "Send Day 7 Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [500, 1500],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.primaryContactEmail }}",
+        "subject": "=Week 1 Check-in: How's it Going, {{ $json.customerName }}?",
+        "emailType": "text",
+        "message": "={{ $('Craft Day 7 Message').item.json.output }}\n\nBest,\n{{ $json.csmName }}\n\nP.S. Here's your success plan for quick reference: {{ $json.docUrl }}"
+      }
+    },
+    {
+      "id": "node-4-3",
+      "name": "Vitally: Log Touchpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 1500],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.example.com/placeholder"
+      },
+      "disabled": true
+    },
+    {
+      "id": "node-4-4",
+      "name": "Workflow Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [980, 1500],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Onboarding Intake Form": {
+      "main": [
+        [
+          {
+            "node": "Structure Intake Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structure Intake Data": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Get Deal Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Get Deal Context": {
+      "main": [
+        [
+          {
+            "node": "Gainsight: Get Health Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gainsight: Get Health Score": {
+      "main": [
+        [
+          {
+            "node": "Generate 30-Day Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate 30-Day Plan": {
+      "main": [
+        [
+          {
+            "node": "Create Doc: Success Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate 30-Day Plan",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Doc: Success Plan": {
+      "main": [
+        [
+          {
+            "node": "Capture Doc URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Doc URL": {
+      "main": [
+        [
+          {
+            "node": "ChurnZero: Create CTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChurnZero: Create CTA": {
+      "main": [
+        [
+          {
+            "node": "Notify CSM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify CSM": {
+      "main": [
+        [
+          {
+            "node": "Welcome Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Welcome Customer": {
+      "main": [
+        [
+          {
+            "node": "Salesforce: Update Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salesforce: Update Status": {
+      "main": [
+        [
+          {
+            "node": "Totango: Update Lifecycle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Totango: Update Lifecycle": {
+      "main": [
+        [
+          {
+            "node": "Craft Day 7 Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Craft Day 7 Message": {
+      "main": [
+        [
+          {
+            "node": "Send Day 7 Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Craft Day 7 Message",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Day 7 Email": {
+      "main": [
+        [
+          {
+            "node": "Vitally: Log Touchpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vitally: Log Touchpoint": {
+      "main": [
+        [
+          {
+            "node": "Workflow Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-28T00:00:00.000Z",
+  "versionId": "1"
+}
